@@ -4,7 +4,6 @@ import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import dev.jdtech.mpv.MPVLib
-import com.facebook.react.bridge.UiThreadUtil
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -13,7 +12,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MpvPlayerModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), dev.jdtech.mpv.MPVLib.EventObserver {
 
-    private var player: MPVLib? = null
     private var progressScheduler: ScheduledExecutorService? = null
     private val isPlaying = AtomicBoolean(false)
     private val isInitialized = AtomicBoolean(false)
@@ -47,33 +45,32 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         
         UiThreadUtil.runOnUiThread {
             try {
-                player = MPVLib.create(reactContext.applicationContext).apply {
-                    init()
-                    addObserver(this@MpvPlayerModule)
+                MPVLib.create(reactContext.applicationContext)
+                MPVLib.init()
+                MPVLib.addObserver(this@MpvPlayerModule)
 
-                    // Set options
-                    options.getString("ao")?.let { setOptionString("ao", it) }
-                    options.getString("vo")?.let { setOptionString("vo", it) }
-                    options.getBoolean("cache")?.let { setOptionString("cache", if(it) "yes" else "no") }
-                    options.getInt("demuxer-max-bytes")?.let { setOptionString("demuxer-max-bytes", (it * 1024 * 1024).toString()) }
-                    options.getInt("demuxer-readahead-secs")?.let { setOptionString("demuxer-readahead-secs", it.toString()) }
-                    options.getInt("network-timeout")?.let { setOptionString("network-timeout", it.toString()) }
-                    options.getString("msg-level")?.let { setOptionString("msg-level", it) }
-                    options.getString("hwdec")?.let { setOptionString("hwdec", it) }
-                    options.getString("userAgent")?.let { setOptionString("user-agent", it) }
-                }
+                // Set options
+                options.getString("ao")?.let { MPVLib.setOptionString("ao", it) }
+                options.getString("vo")?.let { MPVLib.setOptionString("vo", it) }
+                options.getBoolean("cache")?.let { MPVLib.setOptionString("cache", if(it) "yes" else "no") }
+                options.getInt("demuxer-max-bytes")?.let { MPVLib.setOptionString("demuxer-max-bytes", (it * 1024 * 1024).toString()) }
+                options.getInt("demuxer-readahead-secs")?.let { MPVLib.setOptionString("demuxer-readahead-secs", it.toString()) }
+                options.getInt("network-timeout")?.let { MPVLib.setOptionString("network-timeout", it.toString()) }
+                options.getString("msg-level")?.let { MPVLib.setOptionString("msg-level", it) }
+                options.getString("hwdec")?.let { MPVLib.setOptionString("hwdec", it) }
+                options.getString("userAgent")?.let { MPVLib.setOptionString("user-agent", it) }
 
                 // Observe properties
-                player?.observeProperty("pause", MPVLib.MPV_FORMAT_FLAG)
-                player?.observeProperty("time-pos", MPVLib.MPV_FORMAT_INT64)
-                player?.observeProperty("duration", MPVLib.MPV_FORMAT_INT64)
-                player?.observeProperty("idle-active", MPVLib.MPV_FORMAT_FLAG)
-                player?.observeProperty("volume", MPVLib.MPV_FORMAT_INT64)
-                player?.observeProperty("speed", MPVLib.MPV_FORMAT_DOUBLE)
-                player?.observeProperty("seeking", MPVLib.MPV_FORMAT_FLAG)
-                player?.observeProperty("paused-for-cache", MPVLib.MPV_FORMAT_FLAG)
-                player?.observeProperty("playback-error", MPVLib.MPV_FORMAT_STRING)
-                player?.observeProperty("demuxer-cache-duration", MPVLib.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("pause", MPVLib.MPV_FORMAT_FLAG)
+                MPVLib.observeProperty("time-pos", MPVLib.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("duration", MPVLib.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("idle-active", MPVLib.MPV_FORMAT_FLAG)
+                MPVLib.observeProperty("volume", MPVLib.MPV_FORMAT_INT64)
+                MPVLib.observeProperty("speed", MPVLib.MPV_FORMAT_DOUBLE)
+                MPVLib.observeProperty("seeking", MPVLib.MPV_FORMAT_FLAG)
+                MPVLib.observeProperty("paused-for-cache", MPVLib.MPV_FORMAT_FLAG)
+                MPVLib.observeProperty("playback-error", MPVLib.MPV_FORMAT_STRING)
+                MPVLib.observeProperty("demuxer-cache-duration", MPVLib.MPV_FORMAT_INT64)
                 
                 isInitialized.set(true)
                 promise.resolve("Initialization successful")
@@ -92,9 +89,8 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         }
         UiThreadUtil.runOnUiThread {
             stopProgressTimer()
-            player?.removeObserver(this)
-            player?.destroy()
-            player = null
+            MPVLib.removeObserver(this)
+            MPVLib.destroy()
             isInitialized.set(false)
             isPlaying.set(false)
             promise.resolve("Destroyed successfully")
@@ -131,16 +127,16 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 if (headers != null) {
                     val headersString = headersToString(headers)
                     if (headersString.isNotEmpty()) {
-                        player?.setOptionString("http-header-fields", headersString)
+                        MPVLib.setOptionString("http-header-fields", headersString)
                     }
                 }
                 
                 // Set metadata
-                params.getString("title")?.let { player?.setPropertyString("media-title", it) }
-                params.getString("artist")?.let { player?.setPropertyString("artist", it) }
-                params.getString("album")?.let { player?.setPropertyString("album", it) }
+                params.getString("title")?.let { MPVLib.setPropertyString("media-title", it) }
+                params.getString("artist")?.let { MPVLib.setPropertyString("artist", it) }
+                params.getString("album")?.let { MPVLib.setPropertyString("album", it) }
 
-                player?.command(arrayOf("loadfile", url))
+                MPVLib.command(arrayOf("loadfile", url))
                 promise.resolve("Load command sent")
             } catch (e: Exception) {
                 promise.reject("E_LOAD_FAILED", e)
@@ -155,7 +151,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             return
         }
         UiThreadUtil.runOnUiThread {
-            player?.setPropertyBoolean("pause", true)
+            MPVLib.setPropertyBoolean("pause", true)
             promise.resolve(null)
         }
     }
@@ -167,7 +163,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             return
         }
         UiThreadUtil.runOnUiThread {
-            player?.setPropertyBoolean("pause", false)
+            MPVLib.setPropertyBoolean("pause", false)
             promise.resolve(null)
         }
     }
@@ -179,7 +175,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             return
         }
         UiThreadUtil.runOnUiThread {
-            player?.command(arrayOf("stop"))
+            MPVLib.command(arrayOf("stop"))
             promise.resolve(null)
         }
     }
@@ -191,7 +187,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             return
         }
         UiThreadUtil.runOnUiThread {
-            player?.command(arrayOf("seek", seconds.toString(), "absolute"))
+            MPVLib.command(arrayOf("seek", seconds.toString(), "absolute"))
             promise.resolve(null)
         }
     }
@@ -205,7 +201,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         UiThreadUtil.runOnUiThread {
             // Convert from 0-1 to 0-100 for MPV
             val mpvVolume = (volume * 100).toInt().coerceIn(0, 100)
-            player?.setPropertyInt("volume", mpvVolume)
+            MPVLib.setPropertyInt("volume", mpvVolume)
             promise.resolve(null)
         }
     }
@@ -217,7 +213,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             return
         }
         UiThreadUtil.runOnUiThread {
-            player?.setPropertyDouble("speed", rate)
+            MPVLib.setPropertyDouble("speed", rate)
             promise.resolve(null)
         }
     }
@@ -235,7 +231,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         }
         UiThreadUtil.runOnUiThread {
             try {
-                val position = player?.getPropertyInt("time-pos") ?: 0
+                val position = MPVLib.getPropertyInt("time-pos") ?: 0
                 promise.resolve(position)
             } catch (e: Exception) {
                 promise.reject("E_GET_POS", e)
@@ -251,7 +247,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         }
         UiThreadUtil.runOnUiThread {
             try {
-                val duration = player?.getPropertyInt("duration") ?: 0
+                val duration = MPVLib.getPropertyInt("duration") ?: 0
                 promise.resolve(duration)
             } catch (e: Exception) {
                 promise.reject("E_GET_DUR", e)
@@ -260,6 +256,10 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
     }
 
     // MPVLib.EventObserver Implementation
+    override fun eventProperty(property: String) {
+        Log.d(TAG, "Received eventProperty (String only): $property")
+    }
+
     override fun eventProperty(property: String, value: Long) {
         val params = Arguments.createMap()
         when (property) {
@@ -277,7 +277,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         val params = Arguments.createMap()
         when (property) {
             "pause" -> {
-                val isIdle = player?.getPropertyBoolean("idle-active") ?: true
+                val isIdle = MPVLib.getPropertyBoolean("idle-active") ?: true
                 val currentlyPlaying = !value && !isIdle
                 isPlaying.set(currentlyPlaying)
                 if (currentlyPlaying) {
@@ -339,7 +339,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 sendEvent(ON_MPV_ENDED, null)
             }
             MPVLib.MPV_EVENT_ERROR -> {
-                val error = player?.getPropertyString("error") ?: "Unknown error"
+                val error = MPVLib.getPropertyString("error") ?: "Unknown error"
                 Log.e(TAG, "MPV Event Error: $error")
                 val params = Arguments.createMap()
                 params.putString("error", error)
@@ -357,11 +357,11 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         progressScheduler = Executors.newSingleThreadScheduledExecutor()
         progressScheduler?.scheduleAtFixedRate({
             try {
-                if (!isPlaying.get() || player == null) return@scheduleAtFixedRate
+                if (!isPlaying.get()) return@scheduleAtFixedRate
 
-                val position = player?.getPropertyInt("time-pos") ?: 0
-                val duration = player?.getPropertyInt("duration") ?: 0
-                val buffer = player?.getPropertyInt("demuxer-cache-duration") ?: 0
+                val position = MPVLib.getPropertyInt("time-pos") ?: 0
+                val duration = MPVLib.getPropertyInt("duration") ?: 0
+                val buffer = MPVLib.getPropertyInt("demuxer-cache-duration") ?: 0
                 
                 val params = Arguments.createMap().apply {
                     putDouble("position", position.toDouble())
