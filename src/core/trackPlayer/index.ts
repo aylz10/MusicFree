@@ -39,6 +39,7 @@ import minDistance from '@/utils/minDistance';
 import { IPluginManager } from '@/types/core/pluginManager';
 import { getAppUserAgent } from '@/utils/userAgentHelper'; // <--- 新增UA统一导入
 import { ImgAsset } from '@/constants/assetsConst';
+import { nativeMpvPlayer, MpvPlayerEvent } from './NativeMpvPlayer';
 
 
 
@@ -48,7 +49,7 @@ const qualityAtom = atom<IMusic.IQualityKey>('standard');
 const playListAtom = atom<IMusic.IMusicItem[]>([]);
 
 
-class TrackPlayer extends EventEmitter<{
+class TrackPlayerService extends EventEmitter<{
     [TrackPlayerEvents.PlayEnd]: () => void;
     [TrackPlayerEvents.CurrentMusicChanged]: (musicItem: IMusic.IMusicItem | null) => void;
     [TrackPlayerEvents.ProgressChanged]: (progress: {
@@ -61,6 +62,13 @@ class TrackPlayer extends EventEmitter<{
     private musicHistoryService!: IMusicHistory;
     private pluginManagerService!: IPluginManager;
 
+    // --- 新增成员 ---
+    private _activePlayerType: 'rntp' | 'mpv' = 'rntp';
+    private _isMpvInitialized: boolean = false;
+    private _isRntpSetup: boolean = false;
+    // 1-second silent WAV file as a base64 data URI
+    private SILENT_TRACK_URL = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
     // 当前播放的音乐下标
     private currentIndex = -1;
     // 音乐播放器服务是否启动
@@ -71,13 +79,13 @@ class TrackPlayer extends EventEmitter<{
 
     private static maxMusicQueueLength = 10000;
     private static halfMaxMusicQueueLength = 5000;
-    private static toggleRepeatMapping = {
+    public static toggleRepeatMapping = {
         [MusicRepeatMode.SHUFFLE]: MusicRepeatMode.SINGLE,
         [MusicRepeatMode.SINGLE]: MusicRepeatMode.QUEUE,
         [MusicRepeatMode.QUEUE]: MusicRepeatMode.SHUFFLE,
     };
-    private static fakeAudioUrl = "musicfree://fake-audio";
-    private static proposedAudioUrl = "musicfree://proposed-audio";
+    public static fakeAudioUrl = "musicfree://fake-audio";
+    public static proposedAudioUrl = "musicfree://proposed-audio";
 
     constructor() {
         super();
@@ -126,11 +134,17 @@ class TrackPlayer extends EventEmitter<{
 
 
     async setupTrackPlayer() {
+        if (this.serviceInited) {
+            return;
+        }
+
+        await this._initializeActivePlayer();
+
         const rate = PersistStatus.get('music.rate');
         const musicQueue = PersistStatus.get('music.playList');
         const repeatMode = PersistStatus.get('music.repeatMode');
         const progress = PersistStatus.get('music.progress');
-        let track = PersistStatus.get('music.musicItem'); // <--- 改为 let
+        let track = PersistStatus.get('music.musicItem');
         const quality =
             PersistStatus.get('music.quality') ||
             this.configService.getConfig('basic.defaultPlayQuality') ||
@@ -138,7 +152,7 @@ class TrackPlayer extends EventEmitter<{
 
         // 状态恢复
         if (rate) {
-            ReactNativeTrackPlayer.setRate(+rate / 100);
+            this.setRate(+rate / 100);
         }
         if (repeatMode) {
             getDefaultStore().set(repeatModeAtom, repeatMode as MusicRepeatMode);
@@ -156,10 +170,9 @@ class TrackPlayer extends EventEmitter<{
             if (!this.configService.getConfig('basic.autoPlayWhenAppStart')) {
                 track.isInit = true;
             }
-            // 添加 UA
             track.userAgent = getAppUserAgent();
 
-            // 异步
+            // 异步更新音源
             this.pluginManagerService.getByMedia(track)
                 ?.methods.getMediaSource(track, quality)
                 .then(async newSource => {
@@ -167,82 +180,79 @@ class TrackPlayer extends EventEmitter<{
                     track.headers = newSource?.headers || track.headers;
                     track.userAgent = getAppUserAgent();
 
-                    if (isSameMediaItem(this.currentMusic, track)) {
+                    if (isSameMediaItem(this.currentMusic, track) && this._activePlayerType === 'rntp') {
                         await this.setTrackSource(track as Track, false);
                     }
                 });
             this.setCurrentMusic(track);
 
             if (progress) {
-                // 异步
-                ReactNativeTrackPlayer.seekTo(progress);
+                this.seekTo(progress);
             }
         }
 
-        if (!this.serviceInited) {
+        this.subscribeToEvents();
+        this.serviceInited = true;
+    }
 
-            /**
-             * 此事件可能会被触发多次（比如直接替换queue） 参考代码：https://github.com/doublesymmetry/KotlinAudio
-             */
-            ReactNativeTrackPlayer.addEventListener(
-                Event.PlaybackActiveTrackChanged,
-                async evt => {
-                    if (
-                        evt.index === 1 &&
-                        evt.lastIndex === 0 &&
-                        evt.track?.url === TrackPlayer.fakeAudioUrl
-                    ) {
-                        trace('队列末尾，播放下一首');
-                        this.emit(TrackPlayerEvents.PlayEnd);
-                        if (
-                            this.repeatMode ===
-                            MusicRepeatMode.SINGLE
-                        ) {
-                            await this.play(null, true);
-                        } else {
-                            // 当前生效的歌曲是下一曲的标记
-                            await this.skipToNext();
-                        }
-                    }
-                },
-            );
+    private async _initializeActivePlayer(useMpv?: boolean) {
+        const useMpvPlayer = useMpv ?? this.configService.getConfig('player.useMpvPlayer');
 
-            ReactNativeTrackPlayer.addEventListener(
-                Event.PlaybackError,
-                async e => {
-                    errorLog('播放出错', e.message);
-                    // WARNING: 不稳定，报错的时候有可能track已经变到下一首歌去了
-                    const currentTrack =
-                        await ReactNativeTrackPlayer.getActiveTrack();
-                    if (currentTrack?.isInit) {
-                        // HACK: 避免初始失败的情况
-                        ReactNativeTrackPlayer.updateMetadataForTrack(0, {
-                            ...currentTrack,
-                            // @ts-ignore
-                            isInit: undefined,
-                            userAgent: getAppUserAgent(), // <--- 添加UA
-                        });
-                        return;
-                    }
-
-                    if (
-                        currentTrack?.url !== TrackPlayer.fakeAudioUrl && currentTrack?.url !== TrackPlayer.proposedAudioUrl &&
-                        (await ReactNativeTrackPlayer.getActiveTrackIndex()) === 0 &&
-                        e.message &&
-                        e.message !== 'android-io-file-not-found'
-                    ) {
-                        trace('播放出错', {
-                            message: e.message,
-                            code: e.code,
-                        });
-
-                        this.handlePlayFail();
-                    }
-                },
-            );
-
-            this.serviceInited = true;
+        // RNTP 必须始终设置，以保证媒体通知和系统控件始终可用
+        if (!this._isRntpSetup) {
+            try {
+                await ReactNativeTrackPlayer.setupPlayer();
+                this._isRntpSetup = true;
+            } catch (e) {
+                errorLog('RNTP setup failed', e);
+                // 即使RNTP失败，如果用户想用MPV，我们还是可以继续尝试
+            }
         }
+
+        if (useMpvPlayer) {
+            try {
+                await nativeMpvPlayer.initialize();
+                this._isMpvInitialized = true;
+                this._activePlayerType = 'mpv';
+                trace('MPV player initialized successfully.');
+            } catch (e) {
+                errorLog('MPV player initialization failed.', e);
+                showDialog('SimpleDialog', {
+                    title: 'MPV播放器错误',
+                    content: 'MPV播放器初始化失败，将回退到默认播放器。',
+                });
+                // 初始化失败，自动回退并保存配置
+                this.configService.setConfig('player.useMpvPlayer', false);
+                this._activePlayerType = 'rntp';
+            }
+        } else {
+            this._activePlayerType = 'rntp';
+        }
+    }
+
+    public async handlePlayerConfigChange(useMpv: boolean) {
+        if ((useMpv && this._activePlayerType === 'mpv') || (!useMpv && this._activePlayerType === 'rntp')) {
+            return;
+        }
+
+        await this.stop();
+        await this.reset();
+
+        if (useMpv) {
+            if (!this._isMpvInitialized) {
+                await this._initializeActivePlayer(true);
+            } else {
+                this._activePlayerType = 'mpv';
+            }
+        } else {
+            // 切换到 RNTP
+            this._activePlayerType = 'rntp';
+            // MPV实例可以销毁以释放资源
+            await nativeMpvPlayer.stop();
+        }
+
+        // 清空当前状态以备重新加载
+        this.setCurrentMusic(null);
     }
 
     /**************** 播放队列 ******************/
@@ -307,7 +317,7 @@ class TrackPlayer extends EventEmitter<{
         }
 
         // 如果太长了
-        if (newPlayList.length > TrackPlayer.maxMusicQueueLength) {
+        if (newPlayList.length > TrackPlayerService.maxMusicQueueLength) {
             newPlayList = this.shrinkPlayListToSize(
                 newPlayList,
                 beforeIndex ?? newPlayList.length - 1,
@@ -402,14 +412,15 @@ class TrackPlayer extends EventEmitter<{
         forcePlay?: boolean,
     ): Promise<void> {
         try {
-            // 如果不传参，默认是播放当前音乐
+            // Step 0: 如果不传参，默认是播放当前音乐
             if (!musicItem) {
                 musicItem = this.currentMusic;
             }
             if (!musicItem) {
                 throw new Error(PlayFailReason.PLAY_LIST_IS_EMPTY);
             }
-            // 1. 移动网络禁止播放
+
+            // Step 1: 移动网络禁止播放检查
             const localPath = getLocalPath(musicItem);
             if (
                 Network.isCellular &&
@@ -417,228 +428,89 @@ class TrackPlayer extends EventEmitter<{
                 !LocalMusicSheet.isLocalMusic(musicItem) &&
                 !localPath
             ) {
-                await ReactNativeTrackPlayer.reset();
+                await this.reset();
                 throw new Error(PlayFailReason.FORBID_CELLUAR_NETWORK_PLAY);
             }
 
-            // 2. 如果是当前正在播放的音频
-            if (this.isCurrentMusic(musicItem)) {
-                // 获取底层播放器中的track
-                const currentTrack = await ReactNativeTrackPlayer.getTrack(0);
-                // 2.1 如果当前有源
-                if (
-                    currentTrack?.url &&
-                    isSameMediaItem(
-                        musicItem,
-                        currentTrack as IMusic.IMusicItem,
-                    )
-                ) {
-                    const currentActiveIndex =
-                        await ReactNativeTrackPlayer.getActiveTrackIndex();
-                    if (currentActiveIndex !== 0) {
-                        await ReactNativeTrackPlayer.skip(0);
-                    }
-                    if (forcePlay) {
-                        // 2.1.1 强制重新开始
-                        await ReactNativeTrackPlayer.seekTo(0);
-                    }
-                    const currentState = (
-                        await ReactNativeTrackPlayer.getPlaybackState()
-                    ).state;
-                    if (currentState === State.Stopped) {
-                        await this.setTrackSource(currentTrack);
-                    }
-                    if (currentState !== State.Playing) {
-                        // 2.1.2 恢复播放
-                        await ReactNativeTrackPlayer.play();
-                    }
-                    // 这种情况下，播放队列和当前歌曲都不需要变化
-                    return;
-                }
-                // 2.2 其他情况：重新获取源
+            // Step 2: 如果是当前正在播放的音频
+            if (this.isCurrentMusic(musicItem) && !forcePlay) {
+                await this.resume();
+                return;
             }
 
-            // 3. 如果没有在播放列表中，添加到队尾；同时更新列表状态
-            const inPlayList = this.isInPlayList(musicItem);
-            if (!inPlayList) {
+            // Step 3: 如果没有在播放列表中，添加到队尾
+            if (!this.isInPlayList(musicItem)) {
                 this.add(musicItem);
             }
 
-            // 4. 更新列表状态和当前音乐
+            // Step 4: 更新列表状态和当前音乐
             this.setCurrentMusic(musicItem);
-            await ReactNativeTrackPlayer.setQueue([{
-                ...musicItem,
-                url: TrackPlayer.proposedAudioUrl,
-                userAgent: getAppUserAgent(), // <--- 设置UA
-                artwork: musicItem.artwork?.trim()?.length ? musicItem.artwork : ImgAsset.albumDefault,
-            }, this.getFakeNextTrack()]);
-
             this.emit(TrackPlayerEvents.ProgressChanged, { position: 0, duration: musicItem.duration || 0 });
 
-            // 5. 获取音源
-            let track: IMusic.IMusicItem;
-
-            // 5.1 通过插件获取音源
-            const plugin = this.pluginManagerService.getByName(musicItem.platform);
-            // 5.2 获取音质排序
-            const qualityOrder = getQualityOrder(
-                this.configService.getConfig('basic.defaultPlayQuality') ?? 'standard',
-                this.configService.getConfig('basic.playQualityOrder') ?? 'asc',
-            );
-            // 5.3 插件返回音源
-            let source: IPlugin.IMediaSourceResult | null = null;
-            for (let quality of qualityOrder) {
-                if (this.isCurrentMusic(musicItem)) {
-                    source =
-                        (await plugin?.methods?.getMediaSource(
-                            musicItem,
-                            quality,
-                        )) ?? null;
-                    // 5.3.1 获取到真实源
-                    if (source) {
-                        this.setQuality(quality);
-                        break;
-                    }
-                } else {
-                    // 5.3.2 已经切换到其他歌曲了，
-                    return;
-                }
+            // Step 5: 获取音源 (这部分逻辑对于两个播放器是通用的)
+            const track = await this._getPlayableTrack(musicItem);
+            if (!track || !track.url) {
+                throw new Error(PlayFailReason.INVALID_SOURCE);
             }
 
-            if (!this.isCurrentMusic(musicItem)) {
-                return;
-            }
-            if (!source) {
-                // 如果有source
-                if (musicItem.source) {
-                    for (let quality of qualityOrder) {
-                        if (musicItem.source[quality]?.url) {
-                            source = musicItem.source[quality]!;
-                            this.setQuality(quality);
+            // Step 6: 根据当前激活的播放器进行播放
+            if (this._activePlayerType === 'mpv') {
+                // MPV 播放逻辑
+                trace('Playing with MPV', track);
+                await nativeMpvPlayer.loadAndPlay(track as any);
 
-                            break;
-                        }
-                    }
-                }
-                // 5.4 没有返回源
-                if (!source && !musicItem.url) {
-                    // 插件失效的情况
-                    if (this.configService.getConfig('basic.tryChangeSourceWhenPlayFail')) {
-                        // 重试
-                        const similarMusic = await this.getSimilarMusic(
-                            musicItem,
-                            'music',
-                            () => !this.isCurrentMusic(musicItem),
-                        );
+                // --- 影子播放 ---
+                const shadowTrack = {
+                    ...track,
+                    url: this.SILENT_TRACK_URL, // 使用静音URL
+                };
+                await ReactNativeTrackPlayer.reset();
+                await ReactNativeTrackPlayer.add(shadowTrack);
+                await ReactNativeTrackPlayer.play(); // 播放静音轨道以激活系统控件
 
-                        if (similarMusic) {
-                            const similarMusicPlugin =
-                                this.pluginManagerService.getByMedia(similarMusic);
-
-                            for (let quality of qualityOrder) {
-                                if (this.isCurrentMusic(musicItem)) {
-                                    source =
-                                        (await similarMusicPlugin?.methods?.getMediaSource(
-                                            similarMusic,
-                                            quality,
-                                        )) ?? null;
-                                    // 5.4.1 获取到真实源
-                                    if (source) {
-                                        this.setQuality(quality);
-                                        break;
-                                    }
-                                } else {
-                                    // 5.4.2 已经切换到其他歌曲了，
-                                    return;
-                                }
-                            }
-                        }
-
-                        if (!source) {
-                            throw new Error(PlayFailReason.INVALID_SOURCE);
-                        }
-                    } else {
-                        throw new Error(PlayFailReason.INVALID_SOURCE);
-                    }
-                } else {
-                    source = {
-                        url: musicItem.url,
-                    };
-                    this.setQuality('standard');
-                }
+            } else {
+                // RNTP 播放逻辑
+                trace('Playing with RNTP', track);
+                await this.setTrackSource(track as Track);
             }
 
-            // 6. 特殊类型源
-            if (getUrlExt(source.url) === '.m3u8') {
-                // @ts-ignore
-                source.type = 'hls';
-            }
-            // 7. 合并结果
-            track = this.mergeTrackSource(musicItem, source) as IMusic.IMusicItem;
-
-            track.userAgent = getAppUserAgent(); // <--- 确保UA
-
-            // 8. 新增历史记录
+            // Step 7: 新增历史记录
             this.musicHistoryService.addMusic(musicItem);
 
-            trace('获取音源成功', track);
-            // 9. 设置音源
-            await this.setTrackSource(track as Track);
+            // Step 8: 异步获取并设置补充信息
+            this.fetchAndSetExtraTrackInfo(track);
 
-            // 10. 获取补充信息
-            let info: Partial<IMusic.IMusicItem> | null = null;
-            try {
-                info =
-                    (await plugin?.methods?.getMusicInfo?.(musicItem)) ?? null;
-                if (
-                    (typeof info?.url === 'string' && info.url.trim() === '') ||
-                    (info?.url && typeof info.url !== 'string')
-                ) {
-                    delete info.url;
-                }
-            } catch { }
-
-            // 11. 设置补充信息
-            if (info && this.isCurrentMusic(musicItem)) {
-                const mergedTrack = this.mergeTrackSource(track, info);
-                mergedTrack.userAgent = getAppUserAgent(); // <--- 再次确保UA
-                getDefaultStore().set(currentMusicAtom, mergedTrack as IMusic.IMusicItem);
-                await ReactNativeTrackPlayer.updateMetadataForTrack(
-                    0,
-                    mergedTrack as TrackMetadataBase,
-                );
-            }
         } catch (e: any) {
-            const message = e?.message;
-            if (
-                message ===
-                'The player is not initialized. Call setupPlayer first.'
-            ) {
-                await ReactNativeTrackPlayer.setupPlayer();
-                this.play(musicItem, forcePlay);
-            } else if (message === PlayFailReason.FORBID_CELLUAR_NETWORK_PLAY) {
-                if (getCurrentDialog()?.name !== 'SimpleDialog') {
-                    showDialog('SimpleDialog', {
-                        title: '流量提醒',
-                        content:
-                            '当前非WIFI环境，侧边栏设置中打开【使用移动网络播放】功能后可继续播放',
-                    });
-                }
-            } else if (message === PlayFailReason.INVALID_SOURCE) {
-                trace('音源为空，播放失败');
-                await this.handlePlayFail();
-            } else if (message === PlayFailReason.PLAY_LIST_IS_EMPTY) {
-                // 队列是空的，不应该出现这种情况
-            }
+            this.handlePlayError(e, musicItem, forcePlay);
         }
     }
 
     async pause(): Promise<void> {
-        await ReactNativeTrackPlayer.pause();
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.pause();
+        } else {
+            await ReactNativeTrackPlayer.pause();
+        }
+    }
+
+    async resume(): Promise<void> {
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.resume();
+        } else {
+            await ReactNativeTrackPlayer.play();
+        }
+    }
+
+    async stop(): Promise<void> {
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.stop();
+        } else {
+            await ReactNativeTrackPlayer.stop();
+        }
     }
 
     toggleRepeatMode(): void {
-        this.setRepeatMode(TrackPlayer.toggleRepeatMapping[this.repeatMode]);
+        this.setRepeatMode(TrackPlayerService.toggleRepeatMapping[this.repeatMode]);
     }
 
     // 清空播放队列
@@ -673,42 +545,38 @@ class TrackPlayer extends EventEmitter<{
     }
 
     async changeQuality(newQuality: IMusic.IQualityKey): Promise<boolean> {
-        // 获取当前的音乐和进度
         if (newQuality === this.quality) {
             return true;
         }
 
-        // 获取当前歌曲
         const musicItem = this.currentMusic;
         if (!musicItem) {
             return false;
         }
+
         try {
-            const progress = await ReactNativeTrackPlayer.getProgress();
-            const plugin = this.pluginManagerService.getByMedia(musicItem);
-            const newSource = await plugin?.methods?.getMediaSource(
-                musicItem,
-                newQuality,
-            );
-            if (!newSource?.url) {
+            const progress = await this.getProgress();
+            const newTrack = await this._getPlayableTrack(musicItem, newQuality);
+
+            if (!newTrack || !newTrack.url) {
                 throw new Error(PlayFailReason.INVALID_SOURCE);
             }
-            if (this.isCurrentMusic(musicItem)) {
-                const playingState = (
-                    await ReactNativeTrackPlayer.getPlaybackState()
-                ).state;
-                trackToPlay.userAgent = getAppUserAgent(); // <--- 设置UA
-                await this.setTrackSource(
-                    this.mergeTrackSource(musicItem, newSource) as unknown as Track,
-                    !musicIsPaused(playingState),
-                );
 
-                await ReactNativeTrackPlayer.seekTo(progress.position ?? 0);
+            if (this.isCurrentMusic(musicItem)) {
+                if (this._activePlayerType === 'mpv') {
+                    await nativeMpvPlayer.loadAndPlay(newTrack as any);
+                    await nativeMpvPlayer.seekTo(progress.position ?? 0);
+                } else {
+                    const playingState = (await ReactNativeTrackPlayer.getPlaybackState()).state;
+                    await this.setTrackSource(newTrack as Track, !musicIsPaused(playingState));
+                    await ReactNativeTrackPlayer.seekTo(progress.position ?? 0);
+                }
                 this.setQuality(newQuality);
+                return true;
             }
-            return true;
-        } catch {
-            // 修改失败
+            return false;
+        } catch (e) {
+            errorLog('changeQuality failed', e);
             return false;
         }
     }
@@ -719,7 +587,7 @@ class TrackPlayer extends EventEmitter<{
     ): Promise<void> {
         if (newPlayList.length !== 0) {
             const now = Date.now();
-            if (newPlayList.length > TrackPlayer.maxMusicQueueLength) {
+            if (newPlayList.length > TrackPlayerService.maxMusicQueueLength) {
                 newPlayList = this.shrinkPlayListToSize(
                     newPlayList,
                     newPlayList.findIndex(it => isSameMediaItem(it, musicItem)),
@@ -740,11 +608,44 @@ class TrackPlayer extends EventEmitter<{
         }
     }
 
-    getProgress = ReactNativeTrackPlayer.getProgress;
-    getRate = ReactNativeTrackPlayer.getRate;
-    setRate = ReactNativeTrackPlayer.setRate;
-    seekTo = ReactNativeTrackPlayer.seekTo;
-    reset = ReactNativeTrackPlayer.reset;
+    async getProgress() {
+        if (this._activePlayerType === 'mpv') {
+            // MPV progress is event-driven, but we can provide a sync getter if needed,
+            // though it might not be implemented on the native side.
+            // For now, we rely on events. This getter is for RNTP compatibility.
+            return { position: 0, duration: 0, buffered: 0 };
+        }
+        return ReactNativeTrackPlayer.getProgress();
+    }
+
+    async getRate() {
+        if (this._activePlayerType === 'mpv') {
+            // Assuming getRate exists on nativeMpvPlayer
+            // return await nativeMpvPlayer.getRate();
+            return 1; // Placeholder
+        }
+        return ReactNativeTrackPlayer.getRate();
+    }
+    async setRate(rate: number) {
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.setRate(rate / 100);
+        } else {
+            await ReactNativeTrackPlayer.setRate(rate);
+        }
+    }
+    async seekTo(position: number) {
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.seekTo(position);
+        } else {
+            await ReactNativeTrackPlayer.seekTo(position);
+        }
+    }
+    async reset() {
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.stop();
+        }
+        await ReactNativeTrackPlayer.reset();
+    }
 
 
     /**************** 辅助函数 -- 设置内部状态 ****************/
@@ -836,15 +737,15 @@ class TrackPlayer extends EventEmitter<{
         targetIndex = this.currentIndex,
     ) => {
         // 播放列表上限，太多无法缓存状态
-        if (queue.length > TrackPlayer.maxMusicQueueLength) {
-            if (targetIndex < TrackPlayer.halfMaxMusicQueueLength) {
-                queue = queue.slice(0, TrackPlayer.maxMusicQueueLength);
+        if (queue.length > TrackPlayerService.maxMusicQueueLength) {
+            if (targetIndex < TrackPlayerService.halfMaxMusicQueueLength) {
+                queue = queue.slice(0, TrackPlayerService.maxMusicQueueLength);
             } else {
                 const right = Math.min(
                     queue.length,
-                    targetIndex + TrackPlayer.halfMaxMusicQueueLength,
+                    targetIndex + TrackPlayerService.halfMaxMusicQueueLength,
                 );
-                const left = Math.max(0, right - TrackPlayer.maxMusicQueueLength);
+                const left = Math.max(0, right - TrackPlayerService.maxMusicQueueLength);
                 queue = queue.slice(left, right);
             }
         }
@@ -895,7 +796,7 @@ class TrackPlayer extends EventEmitter<{
 
         if (track) {
             return produce(track, _ => {
-                _.url = TrackPlayer.fakeAudioUrl;
+                _.url = TrackPlayerService.fakeAudioUrl;
                 _.$ = internalFakeSoundKey;
                 if (!_.artwork?.trim()?.length) {
                     _.artwork = undefined;
@@ -905,7 +806,7 @@ class TrackPlayer extends EventEmitter<{
         } else {
             // 只有列表长度为0时才会出现的特殊情况
             return {
-                url: TrackPlayer.fakeAudioUrl,
+                url: TrackPlayerService.fakeAudioUrl,
                 $: internalFakeSoundKey,
             } as Track;
         }
@@ -973,7 +874,6 @@ class TrackPlayer extends EventEmitter<{
                     }
                 }
             }
-
             if (distance === 0) {
                 break;
             }
@@ -985,6 +885,235 @@ class TrackPlayer extends EventEmitter<{
         return null;
     }
 
+    private async _getPlayableTrack(musicItem: IMusic.IMusicItem, qualityOverride?: IMusic.IQualityKey): Promise<IMusic.IMusicItem | null> {
+        const plugin = this.pluginManagerService.getByName(musicItem.platform);
+        const qualityOrder = getQualityOrder(
+            qualityOverride ?? this.configService.getConfig('basic.defaultPlayQuality') ?? 'standard',
+            this.configService.getConfig('basic.playQualityOrder') ?? 'asc',
+        );
+
+        let source: IPlugin.IMediaSourceResult | null = null;
+        for (let quality of qualityOrder) {
+            if (this.isCurrentMusic(musicItem)) {
+                source =
+                    (await plugin?.methods?.getMediaSource(
+                        musicItem,
+                        quality,
+                    )) ?? null;
+                if (source) {
+                    this.setQuality(quality);
+                    break;
+                }
+            } else {
+                return null;
+            }
+        }
+
+        if (!this.isCurrentMusic(musicItem)) {
+            return null;
+        }
+
+        if (!source) {
+            if (musicItem.source) {
+                for (let quality of qualityOrder) {
+                    if (musicItem.source[quality]?.url) {
+                        source = musicItem.source[quality]!;
+                        this.setQuality(quality);
+                        break;
+                    }
+                }
+            }
+            if (!source && !musicItem.url) {
+                if (this.configService.getConfig('basic.tryChangeSourceWhenPlayFail')) {
+                    const similarMusic = await this.getSimilarMusic(
+                        musicItem,
+                        'music',
+                        () => !this.isCurrentMusic(musicItem),
+                    );
+
+                    if (similarMusic) {
+                        const similarMusicPlugin =
+                            this.pluginManagerService.getByMedia(similarMusic);
+
+                        for (let quality of qualityOrder) {
+                            if (this.isCurrentMusic(musicItem)) {
+                                source =
+                                    (await similarMusicPlugin?.methods?.getMediaSource(
+                                        similarMusic,
+                                        quality,
+                                    )) ?? null;
+                                if (source) {
+                                    this.setQuality(quality);
+                                    break;
+                                }
+                            } else {
+                                return null;
+                            }
+                        }
+                    }
+                }
+            } else if (!source) { // musicItem.url exists
+                source = { url: musicItem.url };
+                this.setQuality('standard');
+            }
+        }
+
+        if (!source) {
+            return null;
+        }
+
+        if (getUrlExt(source.url) === '.m3u8') {
+            // @ts-ignore
+            source.type = 'hls';
+        }
+        const track = this.mergeTrackSource(musicItem, source) as IMusic.IMusicItem;
+        track.userAgent = getAppUserAgent();
+        return track;
+    }
+
+    private async fetchAndSetExtraTrackInfo(track: IMusic.IMusicItem) {
+        const plugin = this.pluginManagerService.getByName(track.platform);
+        let info: Partial<IMusic.IMusicItem> | null = null;
+        try {
+            info = (await plugin?.methods?.getMusicInfo?.(track)) ?? null;
+            if (
+                (typeof info?.url === 'string' && info.url.trim() === '') ||
+                (info?.url && typeof info.url !== 'string')
+            ) {
+                delete info.url;
+            }
+        } catch (e) {
+            errorLog('fetchAndSetExtraTrackInfo failed', e);
+        }
+
+        if (info && this.isCurrentMusic(track)) {
+            const mergedTrack = this.mergeTrackSource(track, info);
+            mergedTrack.userAgent = getAppUserAgent();
+            getDefaultStore().set(currentMusicAtom, mergedTrack as IMusic.IMusicItem);
+            
+            await ReactNativeTrackPlayer.updateMetadataForTrack(
+                0,
+                mergedTrack as TrackMetadataBase,
+            );
+        }
+    }
+
+    private async handlePlayError(e: any, musicItem?: IMusic.IMusicItem | null, forcePlay?: boolean) {
+        const message = e?.message;
+        if (
+            message ===
+            'The player is not initialized. Call setupPlayer first.'
+        ) {
+            await ReactNativeTrackPlayer.setupPlayer();
+            this.play(musicItem, forcePlay);
+        } else if (message === PlayFailReason.FORBID_CELLUAR_NETWORK_PLAY) {
+            if (getCurrentDialog()?.name !== 'SimpleDialog') {
+                showDialog('SimpleDialog', {
+                    title: '流量提醒',
+                    content:
+                        '当前非WIFI环境，侧边栏设置中打开【使用移动网络播放】功能后可继续播放',
+                });
+            }
+        } else if (message === PlayFailReason.INVALID_SOURCE) {
+            trace('音源为空，播放失败');
+            await this.handlePlayFail();
+        } else if (message === PlayFailReason.PLAY_LIST_IS_EMPTY) {
+            trace('Play command issued but playlist is empty.');
+        } else {
+            trace('Unknown playback error', e);
+            await this.handlePlayFail();
+        }
+    }
+
+    public async destroy() {
+        await this.stop();
+        if (this._isMpvInitialized) {
+            // nativeMpvPlayer.destroy(); // 假设有destroy方法
+        }
+        // ReactNativeTrackPlayer.destroy(); // RNTP的销毁
+        this.serviceInited = false;
+    }
+
+    private subscribeToEvents() {
+        // RNTP Events
+        ReactNativeTrackPlayer.addEventListener(
+            Event.PlaybackActiveTrackChanged,
+            async evt => {
+                if (
+                    evt.track?.url === this.SILENT_TRACK_URL &&
+                    this._activePlayerType === 'rntp'
+                ) {
+                    trace('影子轨道播放完毕，准备播放下一首');
+                    await this.handlePlaybackEnd();
+                }
+            },
+        );
+
+        ReactNativeTrackPlayer.addEventListener(Event.PlaybackError, async e => {
+            if (this._activePlayerType !== 'rntp') return;
+            errorLog('RNTP Playback Error', e.message);
+            const currentTrack = await ReactNativeTrackPlayer.getActiveTrack();
+            if (currentTrack?.isInit) {
+                ReactNativeTrackPlayer.updateMetadataForTrack(0, {
+                    ...currentTrack,
+                    // @ts-ignore
+                    isInit: undefined,
+                    userAgent: getAppUserAgent(),
+                });
+                return;
+            }
+            if (
+                currentTrack?.url !== TrackPlayerService.fakeAudioUrl &&
+                currentTrack?.url !== TrackPlayerService.proposedAudioUrl &&
+                (await ReactNativeTrackPlayer.getActiveTrackIndex()) === 0 &&
+                e.message &&
+                e.message !== 'android-io-file-not-found'
+            ) {
+                this.handlePlayFail();
+            }
+        });
+
+        // System Control Events
+        ReactNativeTrackPlayer.addEventListener(Event.RemotePlay, () => this.resume());
+        ReactNativeTrackPlayer.addEventListener(Event.RemotePause, () => this.pause());
+        ReactNativeTrackPlayer.addEventListener(Event.RemoteNext, () => this.skipToNext());
+        ReactNativeTrackPlayer.addEventListener(Event.RemotePrevious, () => this.skipToPrevious());
+        ReactNativeTrackPlayer.addEventListener(Event.RemoteSeek, ({ position }) => this.seekTo(position));
+
+        // MPV Events
+        nativeMpvPlayer.addEventListener(MpvPlayerEvent.Ended, () => {
+            trace('MPV track ended');
+            this.handlePlaybackEnd();
+        });
+        nativeMpvPlayer.addEventListener(MpvPlayerEvent.PlayStateChanged, ({ isPlaying }) => {
+            trace('MPV state changed', { isPlaying });
+            if (isPlaying) {
+                ReactNativeTrackPlayer.play();
+            } else {
+                ReactNativeTrackPlayer.pause();
+            }
+        });
+        nativeMpvPlayer.addEventListener(MpvPlayerEvent.Progress, (data) => {
+            this.emit(TrackPlayerEvents.ProgressChanged, data);
+            // Sync with notification
+            ReactNativeTrackPlayer.updateMetadataForTrack(0, {
+                duration: data.duration,
+            });
+        });
+        nativeMpvPlayer.addEventListener(MpvPlayerEvent.Error, (e) => {
+            errorLog('MPV Error', e);
+            this.handlePlayFail();
+        });
+    }
+
+    private async handlePlaybackEnd() {
+        this.emit(TrackPlayerEvents.PlayEnd);
+        if (this.repeatMode === MusicRepeatMode.SINGLE) {
+            await this.play(null, true);
+        } else {
+            await this.skipToNext();
+        }
+    }
 }
 
 export const usePlayList = () => useAtomValue(playListAtom);
@@ -1008,5 +1137,5 @@ enum PlayFailReason {
     /** 非当前音乐 */
 }
 
-const trackPlayer = new TrackPlayer();
-export default trackPlayer;
+const trackPlayerService = new TrackPlayerService();
+export default trackPlayerService;

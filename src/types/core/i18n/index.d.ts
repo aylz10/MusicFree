@@ -308,6 +308,7 @@ export interface ILanguageData {
     
     "basicSettings.playback": string; // 播放
     "basicSettings.notInterrupt": string; // 允许与其他应用同时播放
+    "basicSettings.useMpvPlayer": string; // 使用 MPV 播放器
     "basicSettings.autoPlayWhenAppStart": string; // 软件启动时自动播放歌曲
     "basicSettings.tryChangeSourceWhenPlayFail": string; // 播放失败时尝试更换音源
     "basicSettings.autoStopWhenError": string; // 播放失败时自动暂停

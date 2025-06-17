@@ -31,6 +31,9 @@ export interface IAppConfigProperties {
     'basic.musicOrderInLocalSheet': SortType;
     'basic.tryChangeSourceWhenPlayFail': boolean;
 
+    // Player
+    'player.useMpvPlayer': boolean;
+
     // Lyric
     'lyric.showStatusBarLyric': boolean;
     'lyric.topPercent': number;

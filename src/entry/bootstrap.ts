@@ -23,7 +23,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { Linking, Platform } from "react-native";
 import { PERMISSIONS, check, request } from "react-native-permissions";
 import RNTrackPlayer, { AppKilledPlaybackBehavior, Capability } from "react-native-track-player";
-import { getAppUserAgent } from "@/utils/userAgentHelper"; // <--- 新增UA导入
+// import { getAppUserAgent } from "@/utils/userAgentHelper"; // <--- 新增UA导入
 import i18n from "@/core/i18n";
 
 // 依赖管理
@@ -125,7 +125,7 @@ async function bootstrapImpl() {
             Capability.SkipToNext,
             Capability.SkipToPrevious,
         ];
-        const desiredUA = getAppUserAgent(); // <--- 获取期望的 UA
+        // const desiredUA = getAppUserAgent(); // <--- 获取期望的 UA
         await RNTrackPlayer.updateOptions({
         icon: ImgAsset.logoTransparent,
         progressUpdateEventInterval: 1,
@@ -137,7 +137,7 @@ async function bootstrapImpl() {
         capabilities: capabilities,
         compactCapabilities: capabilities,
         notificationCapabilities: [...capabilities, Capability.SeekTo],
-        userAgent: desiredUA, // <--- 设置全局 User-Agent
+        // userAgent: desiredUA, // <--- 设置全局 User-Agent
     });
     logger.mark('播放器初始化完成');
     trace('播放器初始化完成');

@@ -6,10 +6,12 @@
     /* Completeness */
     "noImplicitAny": false,
     "skipLibCheck": true,                                 /* Skip type checking all .d.ts files. */
+    "esModuleInterop": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["node"]
+    "lib": ["es2017"],
+    "types": ["node", "react-native"]
   }
 }

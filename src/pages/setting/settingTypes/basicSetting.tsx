@@ -11,6 +11,7 @@ import Config, { useAppConfig } from "@/core/appConfig";
 import { useI18N } from "@/core/i18n";
 import { ROUTE_PATH, useNavigate } from "@/core/router";
 import useColors from "@/hooks/useColors";
+import TrackPlayerService from "@/core/trackPlayer";
 import LyricUtil, { NativeTextAlignment } from "@/native/lyricUtil";
 import { AppConfigPropertyKey } from "@/types/core/config";
 import { clearCache, getCacheSize, sizeFormatter } from "@/utils/fileUtils";
@@ -129,6 +130,7 @@ export default function BasicSetting() {
     const showExitOnNotification = useAppConfig('basic.showExitOnNotification');
     const musicOrderInLocalSheet = useAppConfig('basic.musicOrderInLocalSheet');
     const tryChangeSourceWhenPlayFail = useAppConfig('basic.tryChangeSourceWhenPlayFail');
+    const useMpvPlayer = useAppConfig('player.useMpvPlayer');
 
     const { t } = useI18N();
 
@@ -265,6 +267,15 @@ export default function BasicSetting() {
                     t('basicSettings.notInterrupt'),
                     'basic.notInterrupt',
                     notInterrupt ?? false,
+                ),
+                createSwitch(
+                    t('basicSettings.useMpvPlayer'),
+                    'player.useMpvPlayer',
+                    useMpvPlayer ?? false,
+                    (newValue) => {
+                        Config.setConfig('player.useMpvPlayer', newValue);
+                        TrackPlayerService.handlePlayerConfigChange(newValue);
+                    }
                 ),
                 createSwitch(
                     t('basicSettings.autoPlayWhenAppStart'),
