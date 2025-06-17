@@ -337,12 +337,23 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 stopProgressTimer()
                 sendEvent(ON_MPV_ENDED, null)
             }
-            MPVLib.MPV_EVENT_ERROR -> {
-                val error = MPVLib.getPropertyString("error") ?: "Unknown error"
-                Log.e(TAG, "MPV Event Error: $error")
-                val params = Arguments.createMap()
-                params.putString("error", error)
-                sendEvent(ON_MPV_ERROR, params)
+            MPVLib.MPV_EVENT_SHUTDOWN -> {
+                Log.e(TAG, "MPV Shutdown Event (eventId: $eventId)")
+                val errorProperty = MPVLib.getPropertyString("error")
+                val playbackErrorProperty = MPVLib.getPropertyString("playback-error")
+                val errorMsg = errorProperty ?: playbackErrorProperty ?: "MPV Shutdown or Unknown Error"
+
+                if (errorProperty != null || playbackErrorProperty != null) {
+                    Log.e(TAG, "MPV Error associated with Shutdown: $errorMsg")
+                    val params = Arguments.createMap()
+                    params.putString("error", errorMsg)
+                    sendEvent(ON_MPV_ERROR, params)
+                } else {
+                    Log.w(TAG, "MPV Shutdown without explicit error property, treating as potential error or end.")
+                    val params = Arguments.createMap()
+                    params.putString("error", "MPV Shutdown")
+                    sendEvent(ON_MPV_ERROR, params)
+                }
                 stopProgressTimer()
                 isPlaying.set(false)
             }
