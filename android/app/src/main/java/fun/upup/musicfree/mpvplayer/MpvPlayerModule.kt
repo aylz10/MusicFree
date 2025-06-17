@@ -3,6 +3,7 @@ package fun.upup.musicfree.mpvplayer
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
+import com.facebook.react.bridge.UiThreadUtil
 import is.xyz.mpv.MPVLib
 import java.util.*
 import java.util.concurrent.Executors
