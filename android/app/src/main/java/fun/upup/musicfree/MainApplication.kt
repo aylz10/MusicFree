@@ -1,4 +1,4 @@
-package fun.upup.musicfree;
+package `fun`.upup.musicfree
 
 import android.app.Application
 import android.content.res.Configuration

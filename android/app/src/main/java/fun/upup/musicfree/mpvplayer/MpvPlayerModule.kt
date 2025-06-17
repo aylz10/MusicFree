@@ -1,4 +1,4 @@
-package fun.upup.musicfree.mpvplayer;
+package `fun`.upup.musicfree.mpvplayer
 
 import android.util.Log
 import com.facebook.react.bridge.*

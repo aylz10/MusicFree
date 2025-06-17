@@ -1,4 +1,4 @@
-package fun.upup.musicfree.mpvplayer;
+package `fun`.upup.musicfree.mpvplayer
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
