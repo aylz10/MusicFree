@@ -126,7 +126,7 @@ android {
 
     defaultConfig {
         applicationId "fun.upup.musicfree"
-        minSdkVersion rootProject.ext.minSdkVersion
+        minSdkVersion 26
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode
         versionName appVersion
