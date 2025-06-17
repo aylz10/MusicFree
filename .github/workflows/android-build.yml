@@ -139,6 +139,16 @@ jobs:
           ls -la node_modules/@react-native/gradle-plugin
           cat node_modules/@react-native/gradle-plugin/package.json || echo "RNGP package.json not found"
 
+      - name: 验证 libmpv-release.aar 是否存在
+        run: |
+          if [ -f "android/app/libs/libmpv-release.aar" ]; then
+            echo "libmpv-release.aar 存在于 android/app/libs/"
+          else
+            echo "错误：libmpv-release.aar 未在 android/app/libs/ 找到！"
+          exit 1
+          fi
+          ls -l android/app/libs/
+
       - name: 构建 Release APK
         working-directory: ./android
         run: |
