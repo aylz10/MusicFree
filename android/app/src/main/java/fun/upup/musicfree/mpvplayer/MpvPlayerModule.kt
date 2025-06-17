@@ -1,9 +1,9 @@
-package fun.upup.musicfree.mpvplayer
+package fun.upup.musicfree.mpvplayer;
 
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
-import is.xyz.mpv.MPVLib
+import dev.jdtech.mpv.MPVLib
 import com.facebook.react.bridge.UiThreadUtil
 import java.util.*
 import java.util.concurrent.Executors
@@ -11,7 +11,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-class MpvPlayerModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), MPVLib.EventObserver {
+class MpvPlayerModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), dev.jdtech.mpv.MPVLib.EventObserver {
 
     private var player: MPVLib? = null
     private var progressScheduler: ScheduledExecutorService? = null

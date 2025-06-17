@@ -1,9 +1,7 @@
-package fun.upup.musicfree
-import android.content.res.Configuration
-import expo.modules.ApplicationLifecycleDispatcher
-import expo.modules.ReactNativeHostWrapper
+package fun.upup.musicfree;
 
 import android.app.Application
+import android.content.res.Configuration
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -14,6 +12,8 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
+import expo.modules.ApplicationLifecycleDispatcher
+import expo.modules.ReactNativeHostWrapper
 import fun.upup.musicfree.lyricUtil.LyricUtilPackage
 import fun.upup.musicfree.mp3Util.Mp3UtilPackage
 import fun.upup.musicfree.mpvplayer.MpvPlayerPackage
