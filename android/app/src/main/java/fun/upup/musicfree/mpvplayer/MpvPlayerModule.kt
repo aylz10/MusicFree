@@ -1,9 +1,9 @@
-package `fun`.upup.musicfree.mpvplayer
+package fun.upup.musicfree.mpvplayer
 
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
-import `is`.xyz.mpv.MPVLib
+import is.xyz.mpv.MPVLib
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -378,6 +378,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         progressScheduler?.shutdown()
         progressScheduler = null
     }
+}
 }
 
 _CHAR_CONTINUED_
