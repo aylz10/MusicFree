@@ -77,20 +77,15 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 promise.resolve("Initialization successful")
             } catch (e: Exception) {
                 Log.e(TAG, "MPV player initialization failed", e)
-                // Attempt to clean up resources
-                destroy(object : Promise {
-                    override fun resolve(value: Any?) {
-                        // No-op
-                    }
-                    override fun reject(code: String?, message: String?, e: Throwable?) {
-                        // No-op
-                    }
-                    // Keep it simple, these are the most common signatures.
-                    // The other overloads are less likely to be required for this internal cleanup.
-                    override fun reject(code: String?, e: Throwable?) {}
-                    override fun reject(e: Throwable?) {}
-                    override fun reject(code: String?, message: String?) {}
-                })
+                // Attempt to clean up resources, simplified to avoid Promise implementation issues.
+                try {
+                    MPVLib.destroy()
+                } catch (cleanupException: Exception) {
+                    Log.e(TAG, "Error during resource cleanup after initialization failure", cleanupException)
+                } finally {
+                    isInitialized.set(false)
+                    isPlaying.set(false)
+                }
                 promise.reject("E_MPV_INIT", "MPV player initialization failed", e)
             }
         }
