@@ -41,12 +41,10 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             promise.resolve("Already initialized")
             return
         }
-        
+
         UiThreadUtil.runOnUiThread {
             try {
                 MPVLib.create(reactContext.applicationContext)
-                MPVLib.init()
-                MPVLib.addObserver(this@MpvPlayerModule)
 
                 // Set options
                 options.getString("ao")?.let { MPVLib.setOptionString("ao", it) }
@@ -59,6 +57,10 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 options.getString("hwdec")?.let { MPVLib.setOptionString("hwdec", it) }
                 options.getString("userAgent")?.let { MPVLib.setOptionString("user-agent", it) }
 
+                MPVLib.init()
+
+                MPVLib.addObserver(this@MpvPlayerModule)
+
                 // Observe properties
                 MPVLib.observeProperty("pause", MPVLib.MPV_FORMAT_FLAG)
                 MPVLib.observeProperty("time-pos", MPVLib.MPV_FORMAT_INT64)
@@ -70,12 +72,25 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 MPVLib.observeProperty("paused-for-cache", MPVLib.MPV_FORMAT_FLAG)
                 MPVLib.observeProperty("playback-error", MPVLib.MPV_FORMAT_STRING)
                 MPVLib.observeProperty("demuxer-cache-duration", MPVLib.MPV_FORMAT_INT64)
-                
+
                 isInitialized.set(true)
                 promise.resolve("Initialization successful")
             } catch (e: Exception) {
-                Log.e(TAG, "Initialization failed", e)
-                promise.reject("E_INIT_FAILED", e)
+                Log.e(TAG, "MPV player initialization failed", e)
+                // Attempt to clean up resources
+                destroy(object : Promise {
+                    override fun resolve(value: Any?) {}
+                    override fun reject(code: String?, message: String?, e: Throwable?) {}
+                    override fun reject(code: String?, e: Throwable?) {}
+                    override fun reject(e: Throwable?) {}
+                    override fun reject(code: String?, message: String?) {}
+                    override fun reject(code: String?, message: String?, e: Throwable?, userInfo: WritableMap?) {}
+                    override fun reject(code: String?, e: Throwable?, userInfo: WritableMap?) {}
+                    override fun reject(e: Throwable?, userInfo: WritableMap?) {}
+                    override fun reject(code: String?, userInfo: WritableMap) {}
+                    override fun reject(message: String?) {}
+                })
+                promise.reject("E_MPV_INIT", "MPV player initialization failed", e)
             }
         }
     }
@@ -87,12 +102,18 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             return
         }
         UiThreadUtil.runOnUiThread {
-            stopProgressTimer()
-            MPVLib.removeObserver(this)
-            MPVLib.destroy()
-            isInitialized.set(false)
-            isPlaying.set(false)
-            promise.resolve("Destroyed successfully")
+            try {
+                stopProgressTimer()
+                MPVLib.removeObserver(this)
+                MPVLib.command(arrayOf("stop"))
+                MPVLib.destroy()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during MPV destroy", e)
+            } finally {
+                isInitialized.set(false)
+                isPlaying.set(false)
+                promise.resolve("Destroyed successfully")
+            }
         }
     }
 

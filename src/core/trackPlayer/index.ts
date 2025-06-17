@@ -222,6 +222,7 @@ class TrackPlayerService extends EventEmitter<{
                     content: 'MPV播放器初始化失败，将回退到默认播放器。',
                 });
                 // 初始化失败，自动回退并保存配置
+                nativeMpvPlayer.destroy();
                 this.configService.setConfig('player.useMpvPlayer', false);
                 this._activePlayerType = 'rntp';
             }

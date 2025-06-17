@@ -130,6 +130,13 @@ class NativeMpvPlayer {
   }
 
   /**
+   * Destroys the player instance and releases all resources.
+   */
+  async destroy(): Promise<void> {
+    return MpvPlayer.destroy();
+  }
+
+  /**
    * Adds a listener for a player event.
    * @param event - The event to listen for.
    * @param listener - The function to call when the event is emitted.
