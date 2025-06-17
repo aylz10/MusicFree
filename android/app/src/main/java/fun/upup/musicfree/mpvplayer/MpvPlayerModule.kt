@@ -80,15 +80,11 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 // Attempt to clean up resources
                 destroy(object : Promise {
                     override fun resolve(value: Any?) {}
-                    override fun reject(code: String?, message: String?, e: Throwable?) {}
-                    override fun reject(code: String?, e: Throwable?) {}
-                    override fun reject(e: Throwable?) {}
-                    override fun reject(code: String?, message: String?) {}
-                    override fun reject(code: String?, message: String?, e: Throwable?, userInfo: WritableMap?) {}
-                    override fun reject(code: String?, e: Throwable?, userInfo: WritableMap?) {}
-                    override fun reject(e: Throwable?, userInfo: WritableMap?) {}
-                    override fun reject(code: String?, userInfo: WritableMap) {}
-                    override fun reject(message: String?) {}
+                    override fun reject(code: String, message: String?) {}
+                    override fun reject(code: String, e: Throwable) {}
+                    override fun reject(code: String, message: String?, e: Throwable) {}
+                    override fun reject(e: Throwable) {}
+                    override fun reject(message: String) {}
                 })
                 promise.reject("E_MPV_INIT", "MPV player initialization failed", e)
             }
