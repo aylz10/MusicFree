@@ -8981,10 +8981,6 @@ react-native-tab-view@^3.5.2:
   dependencies:
     use-latest-callback "^0.1.5"
 
-"react-native-track-player@github:CTZZG/react-native-track-player#v4.1.1-ffmpeg":
-  version "4.1.1"
-  resolved "git+ssh://git@github.com/CTZZG/react-native-track-player.git#e8c856dd90493aec541b00de17bf59fddf2da73d"
-
 react-native-url-polyfill@^2.0.0:
   version "2.0.0"
   resolved "https://registry.npmmirror.com/react-native-url-polyfill/-/react-native-url-polyfill-2.0.0.tgz"
