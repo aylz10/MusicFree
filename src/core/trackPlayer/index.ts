@@ -63,6 +63,9 @@ class TrackPlayerService extends EventEmitter<{
     private pluginManagerService!: IPluginManager;
 
     // --- 新增成员 ---
+    public get activePlayerType(): 'rntp' | 'mpv' {
+        return this._activePlayerType;
+    }
     private _activePlayerType: 'rntp' | 'mpv' = 'rntp';
     private _isMpvInitialized: boolean = false;
     private _isRntpSetup: boolean = false;
@@ -481,14 +484,10 @@ class TrackPlayerService extends EventEmitter<{
                 trace('Playing with MPV', track);
                 await nativeMpvPlayer.loadAndPlay(track as any);
 
-                // --- 影子播放 ---
-                const shadowTrack = {
-                    ...track,
-                    url: this.SILENT_TRACK_URL, // 使用静音URL
-                };
+                // --- 新的影子播放策略：只加载元数据，不播放 ---
                 await ReactNativeTrackPlayer.reset();
-                await ReactNativeTrackPlayer.add(shadowTrack);
-                await ReactNativeTrackPlayer.play(); // 播放静音轨道以激活系统控件
+                // 加载真实 track 的元数据到 RNTP 以显示通知，但不播放它
+                await ReactNativeTrackPlayer.add(track as Track);
 
             } else {
                 // RNTP 播放逻辑
@@ -1109,10 +1108,13 @@ class TrackPlayerService extends EventEmitter<{
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.PlayStateChanged, (state) => {
             trace('MPV state changed', state);
+            // Manually update RNTP state for notification controls
             if (state.isPlaying) {
-                ReactNativeTrackPlayer.play();
+                // @ts-expect-error - Hacking internal state for UI sync
+                ReactNativeTrackPlayer.updatePlaybackState(State.Playing);
             } else {
-                ReactNativeTrackPlayer.pause();
+                // @ts-expect-error
+                ReactNativeTrackPlayer.updatePlaybackState(State.Paused);
             }
             // Forward the event to update the hook
             nativeMpvPlayer.eventEmitter.emit(MpvPlayerEvent.PlayStateChanged, state);

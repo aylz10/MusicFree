@@ -8,12 +8,15 @@ import { showPanel } from '../panels/usePanel';
 import useColors from '@/hooks/useColors';
 import IconButton from '../base/iconButton';
 import TrackPlayer, { useCurrentMusic, useMusicState, useProgress } from '@/core/trackPlayer';
+import { useMpvPlayer } from '@/core/trackPlayer/useMpvPlayer';
 import { musicIsPaused } from '@/utils/trackUtils';
 import MusicInfo from './musicInfo';
 import Icon from '@/components/base/icon.tsx';
 
 function CircularPlayBtn() {
-    const progress = useProgress();
+    const rntpProgress = useProgress();
+    const mpvPlayerState = useMpvPlayer();
+    const progress = TrackPlayer.activePlayerType === 'mpv' ? mpvPlayerState : rntpProgress;
     const musicState = useMusicState();
     const colors = useColors();
 

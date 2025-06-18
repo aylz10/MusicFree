@@ -3,10 +3,13 @@ import { StyleSheet, Text } from 'react-native';
 import rpx from '@/utils/rpx';
 import timeformat from '@/utils/timeformat';
 import { fontSizeConst } from '@/constants/uiConst';
-import { useProgress } from '@/core/trackPlayer';
+import TrackPlayer, { useProgress } from '@/core/trackPlayer';
+import { useMpvPlayer } from '@/core/trackPlayer/useMpvPlayer';
 
 export default function DraggingTime(props: { time: number }) {
-    const progress = useProgress();
+    const rntpProgress = useProgress();
+    const mpvPlayerState = useMpvPlayer();
+    const progress = TrackPlayer.activePlayerType === 'mpv' ? mpvPlayerState : rntpProgress;
 
     return (
         <Text style={style.draggingTimeText}>

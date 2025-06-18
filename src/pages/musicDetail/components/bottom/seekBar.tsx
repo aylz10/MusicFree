@@ -5,6 +5,7 @@ import Slider from '@react-native-community/slider';
 import timeformat from '@/utils/timeformat';
 import { fontSizeConst } from '@/constants/uiConst';
 import TrackPlayer, { useProgress } from '@/core/trackPlayer';
+import { useMpvPlayer } from '@/core/trackPlayer/useMpvPlayer';
 
 interface ITimeLabelProps {
     time: number;
@@ -17,7 +18,10 @@ function TimeLabel(props: ITimeLabelProps) {
 }
 
 export default function SeekBar() {
-    const progress = useProgress(1000);
+    const rntpProgress = useProgress(1000);
+    const mpvPlayerState = useMpvPlayer();
+    const progress = TrackPlayer.activePlayerType === 'mpv' ? mpvPlayerState : rntpProgress;
+    
     const [tmpProgress, setTmpProgress] = useState<number | null>(null);
     const slidingRef = useRef(false);
 
