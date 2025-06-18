@@ -46,16 +46,16 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             try {
                 MPVLib.create(reactContext.applicationContext)
 
-                // Set options
-                options.getString("ao")?.let { MPVLib.setOptionString("ao", it) }
-                options.getString("vo")?.let { MPVLib.setOptionString("vo", it) }
-                options.getBoolean("cache")?.let { MPVLib.setOptionString("cache", if(it) "yes" else "no") }
-                options.getInt("demuxer-max-bytes")?.let { MPVLib.setOptionString("demuxer-max-bytes", (it * 1024 * 1024).toString()) }
-                options.getInt("demuxer-readahead-secs")?.let { MPVLib.setOptionString("demuxer-readahead-secs", it.toString()) }
-                options.getInt("network-timeout")?.let { MPVLib.setOptionString("network-timeout", it.toString()) }
-                options.getString("msg-level")?.let { MPVLib.setOptionString("msg-level", it) }
-                options.getString("hwdec")?.let { MPVLib.setOptionString("hwdec", it) }
-                options.getString("userAgent")?.let { MPVLib.setOptionString("user-agent", it) }
+                // Set options with safety checks
+                if (options.hasKey("ao")) options.getString("ao")?.let { MPVLib.setOptionString("ao", it) }
+                if (options.hasKey("vo")) options.getString("vo")?.let { MPVLib.setOptionString("vo", it) }
+                if (options.hasKey("cache")) MPVLib.setOptionString("cache", if(options.getBoolean("cache")) "yes" else "no")
+                if (options.hasKey("demuxer-max-bytes")) MPVLib.setOptionString("demuxer-max-bytes", (options.getInt("demuxer-max-bytes") * 1024 * 1024).toString())
+                if (options.hasKey("demuxer-readahead-secs")) MPVLib.setOptionString("demuxer-readahead-secs", options.getInt("demuxer-readahead-secs").toString())
+                if (options.hasKey("network-timeout")) MPVLib.setOptionString("network-timeout", options.getInt("network-timeout").toString())
+                if (options.hasKey("msg-level")) options.getString("msg-level")?.let { MPVLib.setOptionString("msg-level", it) }
+                if (options.hasKey("hwdec")) options.getString("hwdec")?.let { MPVLib.setOptionString("hwdec", it) }
+                if (options.hasKey("userAgent")) options.getString("userAgent")?.let { MPVLib.setOptionString("user-agent", it) }
 
                 MPVLib.init()
 

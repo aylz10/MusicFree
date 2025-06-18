@@ -211,7 +211,18 @@ class TrackPlayerService extends EventEmitter<{
 
         if (useMpvPlayer) {
             try {
-                await nativeMpvPlayer.initialize();
+                const mpvOptions = {
+                    ao: 'audiotrack',
+                    vo: 'null',
+                    cache: true,
+                    'demuxer-max-bytes': 200, // in MB
+                    'demuxer-readahead-secs': 10,
+                    'network-timeout': 20,
+                    'msg-level': 'all=v', // For debugging
+                    hwdec: 'auto',
+                    userAgent: getAppUserAgent(),
+                };
+                await nativeMpvPlayer.initialize(mpvOptions);
                 this._isMpvInitialized = true;
                 this._activePlayerType = 'mpv';
                 trace('MPV player initialized successfully.');
