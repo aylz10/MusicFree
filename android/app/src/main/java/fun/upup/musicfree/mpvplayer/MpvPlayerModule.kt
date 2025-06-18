@@ -148,9 +148,9 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 }
                 
                 // Set metadata
-                params.getString("title")?.let { MPVLib.setPropertyString("media-title", it) }
-                params.getString("artist")?.let { MPVLib.setPropertyString("artist", it) }
-                params.getString("album")?.let { MPVLib.setPropertyString("album", it) }
+                // params.getString("title")?.let { MPVLib.setPropertyString("media-title", it) }
+                // params.getString("artist")?.let { MPVLib.setPropertyString("artist", it) }
+                // params.getString("album")?.let { MPVLib.setPropertyString("album", it) }
 
                 MPVLib.command(arrayOf("loadfile", url))
                 promise.resolve("Load command sent")
