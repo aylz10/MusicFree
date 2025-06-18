@@ -56,6 +56,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 if (options.hasKey("msg-level")) options.getString("msg-level")?.let { MPVLib.setOptionString("msg-level", it) }
                 if (options.hasKey("hwdec")) options.getString("hwdec")?.let { MPVLib.setOptionString("hwdec", it) }
                 if (options.hasKey("userAgent")) options.getString("userAgent")?.let { MPVLib.setOptionString("user-agent", it) }
+                MPVLib.setOptionString("keep-open", "always")
 
                 MPVLib.init()
 
