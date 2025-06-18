@@ -177,7 +177,7 @@ dependencies {
     implementation files('libs/libmpv-release.aar')
 
     // 添加ffmpeg扩展
-    implementation 'org.jellyfin.exoplayer:exoplayer-ffmpeg-extension:2.19.0+1'
+    // implementation 'org.jellyfin.exoplayer:exoplayer-ffmpeg-extension:2.19.0+1'
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
