@@ -226,6 +226,12 @@ class TrackPlayerService extends EventEmitter<{
                 this._isMpvInitialized = true;
                 this._activePlayerType = 'mpv';
                 trace('MPV player initialized successfully.');
+                
+                // 初始化MPV成功后，立即用静音轨道控制RNTP
+                const shadowTrack = { url: this.SILENT_TRACK_URL, title: 'MPV Active', artist: ' ' };
+                await ReactNativeTrackPlayer.reset();
+                await ReactNativeTrackPlayer.add(shadowTrack);
+
             } catch (e) {
                 errorLog('MPV player initialization failed.', e);
                 showDialog('SimpleDialog', {
@@ -255,6 +261,10 @@ class TrackPlayerService extends EventEmitter<{
                 await this._initializeActivePlayer(true);
             } else {
                 this._activePlayerType = 'mpv';
+                // 如果已经初始化，同样要确保RNTP处于受控状态
+                const shadowTrack = { url: this.SILENT_TRACK_URL, title: 'MPV Active', artist: ' ' };
+                await ReactNativeTrackPlayer.reset();
+                await ReactNativeTrackPlayer.add(shadowTrack);
             }
         } else {
             // 切换到 RNTP
