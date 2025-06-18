@@ -1108,13 +1108,10 @@ class TrackPlayerService extends EventEmitter<{
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.PlayStateChanged, (state) => {
             trace('MPV state changed', state);
-            // Manually update RNTP state for notification controls
             if (state.isPlaying) {
-                // @ts-expect-error - Hacking internal state for UI sync
-                ReactNativeTrackPlayer.updatePlaybackState(State.Playing);
+                ReactNativeTrackPlayer.play();
             } else {
-                // @ts-expect-error
-                ReactNativeTrackPlayer.updatePlaybackState(State.Paused);
+                ReactNativeTrackPlayer.pause();
             }
             // Forward the event to update the hook
             nativeMpvPlayer.eventEmitter.emit(MpvPlayerEvent.PlayStateChanged, state);

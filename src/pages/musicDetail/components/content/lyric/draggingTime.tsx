@@ -4,12 +4,12 @@ import rpx from '@/utils/rpx';
 import timeformat from '@/utils/timeformat';
 import { fontSizeConst } from '@/constants/uiConst';
 import TrackPlayer, { useProgress } from '@/core/trackPlayer';
-import { useMpvPlayer } from '@/core/trackPlayer/useMpvPlayer';
+import { usePlayerProgress } from '@/core/trackPlayer/usePlayerProgress';
 
 export default function DraggingTime(props: { time: number }) {
     const rntpProgress = useProgress();
-    const mpvPlayerState = useMpvPlayer();
-    const progress = TrackPlayer.activePlayerType === 'mpv' ? mpvPlayerState : rntpProgress;
+    const mpvProgress = usePlayerProgress();
+    const progress = TrackPlayer.activePlayerType === 'mpv' ? mpvProgress : rntpProgress;
 
     return (
         <Text style={style.draggingTimeText}>
