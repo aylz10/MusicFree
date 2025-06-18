@@ -1107,13 +1107,15 @@ class TrackPlayerService extends EventEmitter<{
             trace('MPV track ended');
             this.handlePlaybackEnd();
         });
-        nativeMpvPlayer.addEventListener(MpvPlayerEvent.PlayStateChanged, ({ isPlaying }) => {
-            trace('MPV state changed', { isPlaying });
-            if (isPlaying) {
+        nativeMpvPlayer.addEventListener(MpvPlayerEvent.PlayStateChanged, (state) => {
+            trace('MPV state changed', state);
+            if (state.isPlaying) {
                 ReactNativeTrackPlayer.play();
             } else {
                 ReactNativeTrackPlayer.pause();
             }
+            // Forward the event to update the hook
+            nativeMpvPlayer.eventEmitter.emit(MpvPlayerEvent.PlayStateChanged, state);
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.Progress, (data) => {
             this.emit(TrackPlayerEvents.ProgressChanged, data);

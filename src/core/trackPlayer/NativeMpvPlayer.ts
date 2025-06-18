@@ -51,7 +51,7 @@ export interface LoadParams {
  * It provides a type-safe API and manages player state.
  */
 class NativeMpvPlayer {
-  private readonly eventEmitter: NativeEventEmitter;
+  public readonly eventEmitter: NativeEventEmitter;
   private _isPlaying: boolean = false;
   private _isIdle: boolean = true;
 
