@@ -1,6 +1,7 @@
 import { getCurrentDialog, showDialog } from '@/components/dialogs/useDialog';
 import {
     internalFakeSoundKey,
+    localPluginPlatform,
     sortIndexSymbol,
     timeStampSymbol,
 } from '@/constants/commonConst';
@@ -40,7 +41,7 @@ import { IPluginManager } from '@/types/core/pluginManager';
 import { getAppUserAgent } from '@/utils/userAgentHelper'; // <--- 新增UA统一导入
 import { ImgAsset } from '@/constants/assetsConst';
 import { nativeMpvPlayer, MpvPlayerEvent } from './NativeMpvPlayer';
-import { resolveImportedAssetOrPath } from '@/utils/fileUtils';
+import { addFileScheme, exists, resolveImportedAssetOrPath } from '@/utils/fileUtils';
 
 
 
@@ -947,6 +948,23 @@ class TrackPlayerService extends EventEmitter<{
                 }
             } else {
                 return null;
+            }
+        }
+
+        // 优先处理本地文件 for MPV
+        if (musicItem.platform === localPluginPlatform && this._activePlayerType === 'mpv') {
+            const localPath = getLocalPath(musicItem);
+            if (localPath && (await exists(localPath))) {
+                const isDSF = localPath.toLowerCase().endsWith('.dsf') || localPath.toLowerCase().endsWith('.dff');
+                if (isDSF || !source) {
+                    return {
+                        ...musicItem,
+                        url: addFileScheme(localPath),
+                        duration: musicItem.duration || 0,
+                        artwork: musicItem.artwork || ImgAsset.albumDefault,
+                        userAgent: getAppUserAgent(),
+                    };
+                }
             }
         }
 

@@ -231,3 +231,5 @@ function resolveImportedAsset(id?: number) {
     ? (resolveAssetSource(id) as { uri: string } | null) ?? undefined
     : undefined;
 }
+
+export { exists };
