@@ -124,7 +124,12 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
-    fun loadAndPlay(path: String) {
+    fun loadAndPlay(track: ReadableMap) {
+        val path = track.getString("url")
+        if (path.isNullOrEmpty()) {
+            Log.e(TAG, "loadAndPlay: received track with null or empty url")
+            return
+        }
         Log.d(TAG, "loadAndPlay: $path")
         UiThreadUtil.runOnUiThread {
             MPVLib.command(arrayOf("loadfile", path))
