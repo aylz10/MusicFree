@@ -40,6 +40,7 @@ import { IPluginManager } from '@/types/core/pluginManager';
 import { getAppUserAgent } from '@/utils/userAgentHelper'; // <--- 新增UA统一导入
 import { ImgAsset } from '@/constants/assetsConst';
 import { nativeMpvPlayer, MpvPlayerEvent } from './NativeMpvPlayer';
+import { resolveImportedAssetOrPath } from '@/utils/fileUtils';
 
 
 
@@ -368,10 +369,11 @@ class TrackPlayerService extends EventEmitter<{
     }
 
     addNext(musicItem: IMusic.IMusicItem | IMusic.IMusicItem[]): void {
+        const shouldAutoPlay = this.isPlayListEmpty() || !this.currentMusic;
+
         this.add(musicItem, this.currentIndex + 1);
 
-        const shouldAutoPlay = this.isPlayListEmpty(); // <--- 应该是判断添加前是否为空，或者第一个添加的自动播放
-        if (shouldAutoPlay && this.playList.length > 0) { // <--- 修正逻辑
+        if (shouldAutoPlay) {
             this.play(Array.isArray(musicItem) ? musicItem[0] : musicItem);
         }
     }
@@ -470,7 +472,11 @@ class TrackPlayerService extends EventEmitter<{
 
             // Step 4: 更新列表状态和当前音乐
             this.setCurrentMusic(musicItem);
-            this.emit(TrackPlayerEvents.ProgressChanged, { position: 0, duration: musicItem.duration || 0 });
+            await ReactNativeTrackPlayer.setQueue([{
+                ...musicItem,
+                url: TrackPlayerService.proposedAudioUrl,
+                artwork: resolveImportedAssetOrPath(musicItem.artwork?.trim()?.length ? musicItem.artwork : ImgAsset.albumDefault) as unknown as any,
+            }, this.getFakeNextTrack()]);
 
             // Step 5: 获取音源 (这部分逻辑对于两个播放器是通用的)
             const track = await this._getPlayableTrack(musicItem);
@@ -672,6 +678,7 @@ class TrackPlayerService extends EventEmitter<{
     /**************** 辅助函数 -- 设置内部状态 ****************/
 
     private setCurrentMusic(musicItem?: IMusic.IMusicItem | null) {
+        // 设置UI内部状态的musicitem
         if (!musicItem) {
             this.currentIndex = -1;
             getDefaultStore().set(currentMusicAtom, null);
@@ -680,6 +687,9 @@ class TrackPlayerService extends EventEmitter<{
 
             this.emit(TrackPlayerEvents.CurrentMusicChanged, null);
             return;
+        }
+        if (typeof musicItem.artwork !== 'string') {
+            musicItem.artwork = ImgAsset.albumDefault;
         }
         this.currentIndex = this.getMusicIndexInPlayList(musicItem);
         getDefaultStore().set(currentMusicAtom, musicItem);
@@ -722,11 +732,12 @@ class TrackPlayerService extends EventEmitter<{
 
     // 设置音源
     private async setTrackSource(track: Track, autoPlay = true) {
-        if (!track.artwork?.trim()?.length) {
-            track.artwork = ImgAsset.albumDefault;
+        const clonedTrack = this.patchMediaArtwork(track);
+        if (!clonedTrack) {
+            return;
         }
         track.userAgent = getAppUserAgent(); // <--- 确保设置UA
-        await ReactNativeTrackPlayer.setQueue([track, this.getFakeNextTrack()]);
+        await ReactNativeTrackPlayer.setQueue([clonedTrack, this.getFakeNextTrack()]);
         PersistStatus.set('music.musicItem', track as IMusic.IMusicItem);
         PersistStatus.set('music.progress', 0);
         if (autoPlay) {
@@ -819,10 +830,8 @@ class TrackPlayerService extends EventEmitter<{
             return produce(track, _ => {
                 _.url = TrackPlayerService.fakeAudioUrl;
                 _.$ = internalFakeSoundKey;
-                if (!_.artwork?.trim()?.length) {
-                    _.artwork = undefined;
-                }
                 _.userAgent = appUA;
+                _.artwork = resolveImportedAssetOrPath(ImgAsset.albumDefault) as unknown as any;
             });
         } else {
             // 只有列表长度为0时才会出现的特殊情况
@@ -1137,6 +1146,20 @@ class TrackPlayerService extends EventEmitter<{
             await this.skipToNext();
         }
     }
+
+    private patchMediaArtwork(track: Track) {
+        // Bug: React native track player 在设置音频时，artwork不能为null，并且部分情况下artwork不能为ImageSource类型
+        if (!track) {
+            return null;
+        }
+        return {
+            ...track,
+            artwork: resolveImportedAssetOrPath(
+                track.artwork?.trim()?.length ? track.artwork : ImgAsset.albumDefault,
+            ) as unknown as any,
+        }
+    }
+
 }
 
 export const usePlayList = () => useAtomValue(playListAtom);
