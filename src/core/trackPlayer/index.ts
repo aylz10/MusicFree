@@ -476,7 +476,7 @@ class TrackPlayerService extends EventEmitter<{
             await ReactNativeTrackPlayer.setQueue([{
                 ...musicItem,
                 url: TrackPlayerService.proposedAudioUrl,
-                artwork: resolveImportedAssetOrPath(musicItem.artwork?.trim()?.length ? musicItem.artwork : ImgAsset.albumDefault) as unknown as any,
+                artwork: resolveImportedAssetOrPath(musicItem.artwork?.trim?.()?.length ? musicItem.artwork : ImgAsset.albumDefault) as unknown as any,
             }, this.getFakeNextTrack()]);
 
             // Step 5: 获取音源 (这部分逻辑对于两个播放器是通用的)
@@ -1181,7 +1181,7 @@ class TrackPlayerService extends EventEmitter<{
         return {
             ...track,
             artwork: resolveImportedAssetOrPath(
-                track.artwork?.trim()?.length ? track.artwork : ImgAsset.albumDefault,
+                track.artwork?.trim?.()?.length ? track.artwork : ImgAsset.albumDefault,
             ) as unknown as any,
         }
     }
