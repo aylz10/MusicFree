@@ -332,7 +332,7 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
     override fun event(eventId: Int) {
         when (eventId) {
             MPVLib.MPV_EVENT_END_FILE -> {
-                Log.d(TAG, "Playback ended")
+                Log.d(TAG, "event: MPV_EVENT_END_FILE")
                 isPlaying.set(false)
                 sendEvent(ON_MPV_ENDED, null)
             }

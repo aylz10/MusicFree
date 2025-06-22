@@ -490,10 +490,18 @@ class TrackPlayerService extends EventEmitter<{
                 trace('Playing with MPV', track);
                 await nativeMpvPlayer.loadAndPlay(track as any);
 
-                // --- 新的影子播放策略：只加载元数据，不播放 ---
+                // MPV 播放逻辑
+                trace('Playing with MPV', track);
+                await nativeMpvPlayer.loadAndPlay(track as any);
+                
+                // --- 修复影子音轨逻辑 ---
                 await ReactNativeTrackPlayer.reset();
-                // 加载真实 track 的元数据到 RNTP 以显示通知，但不播放它
-                await ReactNativeTrackPlayer.add(track as Track);
+                const shadowTrack = {
+                    ...(track as Track),
+                    url: this.SILENT_TRACK_URL, // 必须用一个虚拟/静音URL
+                };
+                await ReactNativeTrackPlayer.add(shadowTrack);
+                await ReactNativeTrackPlayer.play(); // 播放以确保通知出现并响应媒体按钮
 
             } else {
                 // RNTP 播放逻辑
@@ -531,9 +539,9 @@ class TrackPlayerService extends EventEmitter<{
     async stop(): Promise<void> {
         if (this._activePlayerType === 'mpv') {
             await nativeMpvPlayer.stop();
-        } else {
-            await ReactNativeTrackPlayer.stop();
         }
+        // 总是尝试停止RNTP以防万一
+        await ReactNativeTrackPlayer.stop();
     }
 
     toggleRepeatMode(): void {
@@ -545,6 +553,9 @@ class TrackPlayerService extends EventEmitter<{
         this.setPlayList([]);
         this.setCurrentMusic(null);
 
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.stop();
+        }
         await ReactNativeTrackPlayer.reset();
         PersistStatus.set('music.musicItem', undefined);
         PersistStatus.set('music.progress', 0);
@@ -1122,15 +1133,12 @@ class TrackPlayerService extends EventEmitter<{
             } else {
                 ReactNativeTrackPlayer.pause();
             }
-            // Forward the event to update the hook
-            nativeMpvPlayer.eventEmitter.emit(MpvPlayerEvent.PlayStateChanged, state);
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.Progress, (data) => {
             this.emit(TrackPlayerEvents.ProgressChanged, data);
             // Sync with notification
-            ReactNativeTrackPlayer.updateMetadataForTrack(0, {
-                duration: data.duration,
-            });
+            const mpvDurationInSeconds = data.duration;
+            ReactNativeTrackPlayer.updateMetadataForTrack(0, { duration: mpvDurationInSeconds });
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.Error, (e) => {
             errorLog('MPV Error', e);
