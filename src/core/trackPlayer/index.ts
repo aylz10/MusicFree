@@ -649,7 +649,7 @@ class TrackPlayerService extends EventEmitter<{
     }
     async setRate(rate: number) {
         if (this._activePlayerType === 'mpv') {
-            await nativeMpvPlayer.setRate(rate / 100);
+            await nativeMpvPlayer.setRate(rate);
         } else {
             await ReactNativeTrackPlayer.setRate(rate);
         }

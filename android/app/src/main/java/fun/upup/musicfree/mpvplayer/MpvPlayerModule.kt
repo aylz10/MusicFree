@@ -4,16 +4,15 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import dev.jdtech.mpv.MPVLib
 import java.util.*
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class MpvPlayerModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), dev.jdtech.mpv.MPVLib.EventObserver {
 
-    private var progressScheduler: ScheduledExecutorService? = null
     private val isPlaying = AtomicBoolean(false)
     private val isInitialized = AtomicBoolean(false)
+    private val position = AtomicLong(0)
+    private val duration = AtomicLong(0)
 
     companion object {
         private const val TAG = "MpvPlayerModule"
@@ -100,7 +99,6 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
         }
         UiThreadUtil.runOnUiThread {
             try {
-                stopProgressTimer()
                 MPVLib.removeObserver(this)
                 MPVLib.command(arrayOf("stop"))
                 MPVLib.destroy()
@@ -126,38 +124,11 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
-    fun loadAndPlay(params: ReadableMap, promise: Promise) {
-        if (!isInitialized.get()) {
-            promise.reject("E_NOT_INITIALIZED", "Player not initialized")
-            return
-        }
-        val url = params.getString("url")
-        if (url.isNullOrEmpty()) {
-            promise.reject("E_INVALID_URL", "URL is null or empty")
-            return
-        }
-
+    fun loadAndPlay(path: String) {
+        Log.d(TAG, "loadAndPlay: $path")
         UiThreadUtil.runOnUiThread {
-            try {
-                // Set headers if available
-                val headers = params.getMap("headers")
-                if (headers != null) {
-                    val headersString = headersToString(headers)
-                    if (headersString.isNotEmpty()) {
-                        MPVLib.setOptionString("http-header-fields", headersString)
-                    }
-                }
-                
-                // Set metadata
-                // params.getString("title")?.let { MPVLib.setPropertyString("media-title", it) }
-                // params.getString("artist")?.let { MPVLib.setPropertyString("artist", it) }
-                // params.getString("album")?.let { MPVLib.setPropertyString("album", it) }
-
-                MPVLib.command(arrayOf("loadfile", url))
-                promise.resolve("Load command sent")
-            } catch (e: Exception) {
-                promise.reject("E_LOAD_FAILED", e)
-            }
+            MPVLib.command(arrayOf("loadfile", path))
+            MPVLib.setPropertyBoolean("pause", false)
         }
     }
 
@@ -278,15 +249,28 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
     }
 
     override fun eventProperty(property: String, value: Long) {
-        val params = Arguments.createMap()
         when (property) {
+            "time-pos" -> position.set(value)
+            "duration" -> duration.set(value)
             "volume" -> {
+                val params = Arguments.createMap()
                 params.putDouble("volume", value.toDouble() / 100.0)
                 sendEvent(ON_MPV_VOLUME_CHANGED, params)
+                // Return early to prevent sending a progress event on volume change
+                return
             }
-            "time-pos" -> { /* Handled by timer */ }
-            "duration" -> { /* Handled by timer */ }
-            "demuxer-cache-duration" -> { /* Handled by timer */ }
+            "demuxer-cache-duration" -> {
+                // This can be used to update buffer progress if needed
+                return
+            }
+        }
+
+        // For time-pos or duration updates, send a progress event
+        if (property == "time-pos" || property == "duration") {
+            val progressMap = Arguments.createMap()
+            progressMap.putInt("position", position.get().toInt())
+            progressMap.putInt("duration", duration.get().toInt())
+            sendEvent(ON_MPV_PROGRESS, progressMap)
         }
     }
 
@@ -297,11 +281,6 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 val isIdle = MPVLib.getPropertyBoolean("idle-active") ?: true
                 val currentlyPlaying = !value && !isIdle
                 isPlaying.set(currentlyPlaying)
-                if (currentlyPlaying) {
-                    startProgressTimer()
-                } else {
-                    stopProgressTimer()
-                }
                 params.putBoolean("isPlaying", isPlaying.get())
                 sendEvent(ON_MPV_PLAY_STATE_CHANGED, params)
             }
@@ -309,7 +288,6 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 val isIdle = value
                 if (isIdle) {
                     isPlaying.set(false)
-                    stopProgressTimer()
                     params.putBoolean("isPlaying", false)
                     sendEvent(ON_MPV_PLAY_STATE_CHANGED, params)
                 }
@@ -341,7 +319,6 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                 Log.e(TAG, "MPV Playback Error: $value")
                 params.putString("error", value)
                 sendEvent(ON_MPV_ERROR, params)
-                stopProgressTimer()
                 isPlaying.set(false)
             }
         }
@@ -352,7 +329,6 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
             MPVLib.MPV_EVENT_END_FILE -> {
                 Log.d(TAG, "Playback ended")
                 isPlaying.set(false)
-                stopProgressTimer()
                 sendEvent(ON_MPV_ENDED, null)
             }
             MPVLib.MPV_EVENT_SHUTDOWN -> {
@@ -372,39 +348,9 @@ class MpvPlayerModule(private val reactContext: ReactApplicationContext) : React
                     params.putString("error", "MPV Shutdown")
                     sendEvent(ON_MPV_ERROR, params)
                 }
-                stopProgressTimer()
                 isPlaying.set(false)
             }
         }
     }
 
-    private fun startProgressTimer() {
-        if (progressScheduler != null && !progressScheduler!!.isShutdown) {
-            return // Timer already running
-        }
-        progressScheduler = Executors.newSingleThreadScheduledExecutor()
-        progressScheduler?.scheduleAtFixedRate({
-            try {
-                if (!isPlaying.get()) return@scheduleAtFixedRate
-
-                val position = MPVLib.getPropertyInt("time-pos") ?: 0
-                val duration = MPVLib.getPropertyInt("duration") ?: 0
-                val buffer = MPVLib.getPropertyInt("demuxer-cache-duration") ?: 0
-                
-                val params = Arguments.createMap().apply {
-                    putDouble("position", position.toDouble())
-                    putDouble("duration", duration.toDouble())
-                    putDouble("buffer", buffer.toDouble())
-                }
-                sendEvent(ON_MPV_PROGRESS, params)
-            } catch (e: Exception) {
-                Log.e(TAG, "Progress timer exception", e)
-            }
-        }, 0, 500, TimeUnit.MILLISECONDS)
-    }
-
-    private fun stopProgressTimer() {
-        progressScheduler?.shutdown()
-        progressScheduler = null
-    }
 }
