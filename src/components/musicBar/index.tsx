@@ -7,20 +7,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showPanel } from '../panels/usePanel';
 import useColors from '@/hooks/useColors';
 import IconButton from '../base/iconButton';
-import TrackPlayer, { useCurrentMusic, useMusicState, useProgress } from '@/core/trackPlayer';
+import TrackPlayer, { useCurrentMusic } from '@/core/trackPlayer';
 import { usePlayerProgress } from '@/core/trackPlayer/usePlayerProgress';
+import { useUnifiedPlaybackState } from '@/core/trackPlayer/useUnifiedPlaybackState';
 import { musicIsPaused } from '@/utils/trackUtils';
 import MusicInfo from './musicInfo';
 import Icon from '@/components/base/icon.tsx';
 
 function CircularPlayBtn() {
-    const rntpProgress = useProgress();
-    const mpvProgress = usePlayerProgress();
-    const progress = TrackPlayer.activePlayerType === 'mpv' ? mpvProgress : rntpProgress;
-    const musicState = useMusicState();
+    const progress = usePlayerProgress();
+    const { state } = useUnifiedPlaybackState();
     const colors = useColors();
 
-    const isPaused = musicIsPaused(musicState);
+    const isPaused = musicIsPaused(state);
 
     return (
         <CircularProgressBase

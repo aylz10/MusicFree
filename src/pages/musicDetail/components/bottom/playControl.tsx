@@ -5,14 +5,15 @@ import { InteractionManager, StyleSheet, View } from 'react-native';
 
 import Icon from '@/components/base/icon.tsx';
 import { showPanel } from '@/components/panels/usePanel';
-import TrackPlayer, { useMusicState, useRepeatMode } from '@/core/trackPlayer';
+import TrackPlayer, { useRepeatMode } from '@/core/trackPlayer';
+import { useUnifiedPlaybackState } from '@/core/trackPlayer/useUnifiedPlaybackState';
 import useOrientation from '@/hooks/useOrientation';
 import delay from '@/utils/delay';
 import { musicIsPaused } from '@/utils/trackUtils';
 
 export default function () {
     const repeatMode = useRepeatMode();
-    const musicState = useMusicState();
+    const { state } = useUnifiedPlaybackState();
 
     const orientation = useOrientation();
 
@@ -50,10 +51,10 @@ export default function () {
                 />
                 <Icon
                     color={'white'}
-                    name={musicIsPaused(musicState) ? 'play' : 'pause'}
+                    name={musicIsPaused(state) ? 'play' : 'pause'}
                     size={rpx(96)}
                     onPress={() => {
-                        if (musicIsPaused(musicState)) {
+                        if (musicIsPaused(state)) {
                             TrackPlayer.play();
                         } else {
                             TrackPlayer.pause();

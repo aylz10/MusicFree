@@ -21,6 +21,13 @@ import { musicIsPaused } from '@/utils/trackUtils';
 import EventEmitter from 'eventemitter3';
 import { produce } from 'immer';
 import { atom, getDefaultStore, useAtomValue } from 'jotai';
+import {
+    activePlayerAtom,
+    unifiedDurationAtom,
+    unifiedIsBufferingAtom,
+    unifiedIsPlayingAtom,
+    unifiedPositionAtom,
+} from './stateAtoms';
 import shuffle from 'lodash.shuffle';
 import ReactNativeTrackPlayer, {
     Event,
@@ -230,6 +237,7 @@ class TrackPlayerService extends EventEmitter<{
                 await nativeMpvPlayer.initialize(mpvOptions);
                 this._isMpvInitialized = true;
                 this._activePlayerType = 'mpv';
+                getDefaultStore().set(activePlayerAtom, 'mpv');
                 trace('MPV player initialized successfully.');
                 
                 // 初始化MPV成功后，立即用静音轨道控制RNTP
@@ -247,9 +255,11 @@ class TrackPlayerService extends EventEmitter<{
                 nativeMpvPlayer.destroy();
                 this.configService.setConfig('player.useMpvPlayer', false);
                 this._activePlayerType = 'rntp';
+                getDefaultStore().set(activePlayerAtom, 'rntp');
             }
         } else {
             this._activePlayerType = 'rntp';
+            getDefaultStore().set(activePlayerAtom, 'rntp');
         }
     }
 
@@ -266,6 +276,7 @@ class TrackPlayerService extends EventEmitter<{
                 await this._initializeActivePlayer(true);
             } else {
                 this._activePlayerType = 'mpv';
+                getDefaultStore().set(activePlayerAtom, 'mpv');
                 // 如果已经初始化，同样要确保RNTP处于受控状态
                 const shadowTrack = { url: this.SILENT_TRACK_URL, title: 'MPV Active', artist: ' ' };
                 await ReactNativeTrackPlayer.reset();
@@ -274,6 +285,7 @@ class TrackPlayerService extends EventEmitter<{
         } else {
             // 切换到 RNTP
             this._activePlayerType = 'rntp';
+            getDefaultStore().set(activePlayerAtom, 'rntp');
             // MPV实例可以销毁以释放资源
             await nativeMpvPlayer.stop();
         }
@@ -499,7 +511,7 @@ class TrackPlayerService extends EventEmitter<{
                 const shadowTrackMetadata: Track = {
                     ...(track as Track),
                     url: this.SILENT_TRACK_URL, // 必须用一个虚拟/静音URL
-                    duration: track.duration, // 确保时长正确
+                    duration: track.duration || 0, // 确保时长正确
                 };
                 await ReactNativeTrackPlayer.add(shadowTrackMetadata);
                 await ReactNativeTrackPlayer.play(); // 播放以确保通知出现并响应媒体按钮
@@ -1094,6 +1106,26 @@ class TrackPlayerService extends EventEmitter<{
 
     private subscribeToEvents() {
         // RNTP Events
+        ReactNativeTrackPlayer.addEventListener(Event.PlaybackProgressUpdated, (evt) => {
+            if (this._activePlayerType === 'rntp') {
+                const store = getDefaultStore();
+                store.set(unifiedPositionAtom, evt.position);
+                store.set(unifiedDurationAtom, evt.duration);
+            }
+            this.emit(TrackPlayerEvents.ProgressChanged, evt);
+        });
+
+        ReactNativeTrackPlayer.addEventListener(Event.PlaybackState, (evt) => {
+            if (this._activePlayerType === 'rntp') {
+                const store = getDefaultStore();
+                const state = evt.state;
+                store.set(unifiedIsPlayingAtom, state === State.Playing);
+                const isBuffering =
+                    state === State.Buffering || state === State.Connecting;
+                store.set(unifiedIsBufferingAtom, isBuffering);
+            }
+        });
+
         ReactNativeTrackPlayer.addEventListener(
             Event.PlaybackActiveTrackChanged,
             async evt => {
@@ -1140,11 +1172,18 @@ class TrackPlayerService extends EventEmitter<{
 
         // MPV Events
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.Ended, () => {
+            if (this._activePlayerType !== 'mpv') return;
             trace('MPV track ended');
             this.handlePlaybackEnd();
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.PlayStateChanged, (state) => {
             trace('MPV state changed', state);
+            if (this._activePlayerType === 'mpv') {
+                const store = getDefaultStore();
+                store.set(unifiedIsPlayingAtom, state.isPlaying);
+                store.set(unifiedIsBufferingAtom, state.isBuffering ?? false);
+            }
+            // Sync notification controls
             if (state.isPlaying) {
                 ReactNativeTrackPlayer.play();
             } else {
@@ -1152,12 +1191,17 @@ class TrackPlayerService extends EventEmitter<{
             }
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.Progress, (data) => {
+            if (this._activePlayerType === 'mpv') {
+                const store = getDefaultStore();
+                store.set(unifiedPositionAtom, data.position);
+                store.set(unifiedDurationAtom, data.duration);
+                // Sync with notification
+                ReactNativeTrackPlayer.updateMetadataForTrack(0, { duration: data.duration });
+            }
             this.emit(TrackPlayerEvents.ProgressChanged, data);
-            // Sync with notification
-            const mpvDurationInSeconds = data.duration;
-            ReactNativeTrackPlayer.updateMetadataForTrack(0, { duration: mpvDurationInSeconds });
         });
         nativeMpvPlayer.addEventListener(MpvPlayerEvent.Error, (e) => {
+            if (this._activePlayerType !== 'mpv') return;
             errorLog('MPV Error', e);
             this.handlePlayFail();
         });

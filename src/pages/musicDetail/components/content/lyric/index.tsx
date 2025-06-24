@@ -7,7 +7,8 @@ import { fontSizeConst } from "@/constants/uiConst";
 import Loading from "@/components/base/loading";
 import globalStyle from "@/constants/globalStyle";
 import { showPanel } from "@/components/panels/usePanel";
-import TrackPlayer, { useCurrentMusic, useMusicState } from "@/core/trackPlayer";
+import TrackPlayer, { useCurrentMusic } from "@/core/trackPlayer";
+import { useUnifiedPlaybackState } from "@/core/trackPlayer/useUnifiedPlaybackState";
 import { musicIsPaused } from "@/utils/trackUtils";
 import delay from "@/utils/delay";
 import DraggingTime from "./draggingTime";
@@ -58,7 +59,7 @@ export default function Lyric(props: IProps) {
 
     const [draggingIndex, setDraggingIndex, setDraggingIndexImmi] =
         useDelayFalsy<number | undefined>(undefined, 2000);
-    const musicState = useMusicState();
+    const { state } = useUnifiedPlaybackState();
     const { t } = useI18N();
 
     const [layout, setLayout] = useState<LayoutRectangle>();
@@ -137,7 +138,7 @@ export default function Lyric(props: IProps) {
         if (
             lyrics.length === 0 ||
             draggingIndex !== undefined ||
-            (draggingIndex === undefined && musicIsPaused(musicState)) ||
+            (draggingIndex === undefined && musicIsPaused(state)) ||
             lyrics[lyrics.length - 1].time < 1
         ) {
             return;
