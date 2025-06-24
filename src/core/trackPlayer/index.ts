@@ -72,7 +72,7 @@ class TrackPlayerService extends EventEmitter<{
     private _isMpvInitialized: boolean = false;
     private _isRntpSetup: boolean = false;
     // 1-second silent WAV file as a base64 data URI
-    private SILENT_TRACK_URL = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    private SILENT_TRACK_URL = require('@/assets/raw/silent_track.mp3');
 
     // 当前播放的音乐下标
     private currentIndex = -1;
@@ -488,20 +488,20 @@ class TrackPlayerService extends EventEmitter<{
             // Step 6: 根据当前激活的播放器进行播放
             if (this._activePlayerType === 'mpv') {
                 // MPV 播放逻辑
-                trace('Playing with MPV', track);
-                await nativeMpvPlayer.loadAndPlay(track as any);
-
                 // MPV 播放逻辑
                 trace('Playing with MPV', track);
+                // 确保在播放新轨道前停止当前轨道
+                await nativeMpvPlayer.stop();
                 await nativeMpvPlayer.loadAndPlay(track as any);
                 
                 // --- 修复影子音轨逻辑 ---
                 await ReactNativeTrackPlayer.reset();
-                const shadowTrack = {
+                const shadowTrackMetadata: Track = {
                     ...(track as Track),
                     url: this.SILENT_TRACK_URL, // 必须用一个虚拟/静音URL
+                    duration: track.duration, // 确保时长正确
                 };
-                await ReactNativeTrackPlayer.add(shadowTrack);
+                await ReactNativeTrackPlayer.add(shadowTrackMetadata);
                 await ReactNativeTrackPlayer.play(); // 播放以确保通知出现并响应媒体按钮
 
             } else {
@@ -541,7 +541,6 @@ class TrackPlayerService extends EventEmitter<{
         if (this._activePlayerType === 'mpv') {
             await nativeMpvPlayer.stop();
         }
-        // 总是尝试停止RNTP以防万一
         await ReactNativeTrackPlayer.stop();
     }
 
@@ -1166,6 +1165,9 @@ class TrackPlayerService extends EventEmitter<{
 
     private async handlePlaybackEnd() {
         this.emit(TrackPlayerEvents.PlayEnd);
+        if (this._activePlayerType === 'mpv') {
+            await nativeMpvPlayer.stop();
+        }
         if (this.repeatMode === MusicRepeatMode.SINGLE) {
             await this.play(null, true);
         } else {
