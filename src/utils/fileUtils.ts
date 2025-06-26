@@ -233,3 +233,11 @@ function resolveImportedAsset(id?: number) {
 }
 
 export { exists };
+
+export const silentTrack = {
+  url: require('@/assets/raw/silent_track.mp3'),
+  path: 'assets/raw/silent_track.mp3', // For direct access
+  title: 'Silent Track',
+  artist: 'System',
+  duration: 1,
+};
