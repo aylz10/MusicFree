@@ -19,7 +19,8 @@
     "connect-mumu": "adb kill-server & adb connect localhost:7555",
     "build-android": "cd .\\android\\ && .\\gradlew assembleRelease",
     "generate-assets": "node ./generator/generate-assets.mjs",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.23.1",
@@ -53,6 +54,7 @@
     "nanoid": "5.0.8",
     "object-path": "^0.11.8",
     "p-queue": "^8.0.1",
+    "patch-package": "^8.0.0",
     "path-browserify": "^1.0.1",
     "qs": "^6.13.0",
     "react": "18.3.1",
